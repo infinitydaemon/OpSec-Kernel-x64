@@ -339,7 +339,7 @@ int bch2_inode_peek_nowarn(struct btree_trans *trans,
 
 	k = bch2_bkey_get_iter(trans, iter, BTREE_ID_inodes,
 			       SPOS(0, inum.inum, snapshot),
-			       flags|BTREE_ITER_cached);
+			       flags|BTREE_ITER_CACHED);
 	ret = bkey_err(k);
 	if (ret)
 		return ret;
@@ -371,7 +371,7 @@ int bch2_inode_peek(struct btree_trans *trans,
 int bch2_inode_write_flags(struct btree_trans *trans,
 		     struct btree_iter *iter,
 		     struct bch_inode_unpacked *inode,
-		     enum btree_iter_update_trigger_flags flags)
+		     enum btree_update_flags flags)
 {
 	struct bkey_inode_buf *inode_p;
 
@@ -399,7 +399,7 @@ int __bch2_fsck_write_inode(struct btree_trans *trans,
 
 	return bch2_btree_insert_nonextent(trans, BTREE_ID_inodes,
 				&inode_p->inode.k_i,
-				BTREE_UPDATE_internal_snapshot_node);
+				BTREE_UPDATE_INTERNAL_SNAPSHOT_NODE);
 }
 
 int bch2_fsck_write_inode(struct btree_trans *trans,
@@ -473,7 +473,7 @@ fsck_err:
 }
 
 int bch2_inode_invalid(struct bch_fs *c, struct bkey_s_c k,
-		       enum bch_validate_flags flags,
+		       enum bkey_invalid_flags flags,
 		       struct printbuf *err)
 {
 	struct bkey_s_c_inode inode = bkey_s_c_to_inode(k);
@@ -490,7 +490,7 @@ fsck_err:
 }
 
 int bch2_inode_v2_invalid(struct bch_fs *c, struct bkey_s_c k,
-			  enum bch_validate_flags flags,
+			  enum bkey_invalid_flags flags,
 			  struct printbuf *err)
 {
 	struct bkey_s_c_inode_v2 inode = bkey_s_c_to_inode_v2(k);
@@ -507,7 +507,7 @@ fsck_err:
 }
 
 int bch2_inode_v3_invalid(struct bch_fs *c, struct bkey_s_c k,
-			  enum bch_validate_flags flags,
+			  enum bkey_invalid_flags flags,
 			  struct printbuf *err)
 {
 	struct bkey_s_c_inode_v3 inode = bkey_s_c_to_inode_v3(k);
@@ -535,19 +535,29 @@ static void __bch2_inode_unpacked_to_text(struct printbuf *out,
 					  struct bch_inode_unpacked *inode)
 {
 	printbuf_indent_add(out, 2);
-	prt_printf(out, "mode=%o\n", inode->bi_mode);
+	prt_printf(out, "mode=%o", inode->bi_mode);
+	prt_newline(out);
 
 	prt_str(out, "flags=");
 	prt_bitflags(out, bch2_inode_flag_strs, inode->bi_flags & ((1U << 20) - 1));
-	prt_printf(out, " (%x)\n", inode->bi_flags);
+	prt_printf(out, " (%x)", inode->bi_flags);
+	prt_newline(out);
 
-	prt_printf(out, "journal_seq=%llu\n",	inode->bi_journal_seq);
-	prt_printf(out, "bi_size=%llu\n",	inode->bi_size);
-	prt_printf(out, "bi_sectors=%llu\n",	inode->bi_sectors);
-	prt_printf(out, "bi_version=%llu\n",	inode->bi_version);
+	prt_printf(out, "journal_seq=%llu", inode->bi_journal_seq);
+	prt_newline(out);
+
+	prt_printf(out, "bi_size=%llu", inode->bi_size);
+	prt_newline(out);
+
+	prt_printf(out, "bi_sectors=%llu", inode->bi_sectors);
+	prt_newline(out);
+
+	prt_printf(out, "bi_version=%llu", inode->bi_version);
+	prt_newline(out);
 
 #define x(_name, _bits)						\
-	prt_printf(out, #_name "=%llu\n", (u64) inode->_name);
+	prt_printf(out, #_name "=%llu", (u64) inode->_name);	\
+	prt_newline(out);
 	BCH_INODE_FIELDS_v3()
 #undef  x
 	printbuf_indent_sub(out, 2);
@@ -594,11 +604,11 @@ int bch2_trigger_inode(struct btree_trans *trans,
 		       enum btree_id btree_id, unsigned level,
 		       struct bkey_s_c old,
 		       struct bkey_s new,
-		       enum btree_iter_update_trigger_flags flags)
+		       unsigned flags)
 {
 	s64 nr = (s64) bkey_is_inode(new.k) - (s64) bkey_is_inode(old.k);
 
-	if (flags & BTREE_TRIGGER_transactional) {
+	if (flags & BTREE_TRIGGER_TRANSACTIONAL) {
 		if (nr) {
 			int ret = bch2_replicas_deltas_realloc(trans, 0);
 			if (ret)
@@ -617,13 +627,13 @@ int bch2_trigger_inode(struct btree_trans *trans,
 		}
 	}
 
-	if ((flags & BTREE_TRIGGER_atomic) && (flags & BTREE_TRIGGER_insert)) {
+	if ((flags & BTREE_TRIGGER_ATOMIC) && (flags & BTREE_TRIGGER_INSERT)) {
 		BUG_ON(!trans->journal_res.seq);
 
 		bkey_s_to_inode_v3(new).v->bi_journal_seq = cpu_to_le64(trans->journal_res.seq);
 	}
 
-	if (flags & BTREE_TRIGGER_gc) {
+	if (flags & BTREE_TRIGGER_GC) {
 		struct bch_fs *c = trans->c;
 
 		percpu_down_read(&c->mark_lock);
@@ -635,7 +645,7 @@ int bch2_trigger_inode(struct btree_trans *trans,
 }
 
 int bch2_inode_generation_invalid(struct bch_fs *c, struct bkey_s_c k,
-				  enum bch_validate_flags flags,
+				  enum bkey_invalid_flags flags,
 				  struct printbuf *err)
 {
 	int ret = 0;
@@ -752,8 +762,8 @@ int bch2_inode_create(struct btree_trans *trans,
 
 	pos = start;
 	bch2_trans_iter_init(trans, iter, BTREE_ID_inodes, POS(0, pos),
-			     BTREE_ITER_all_snapshots|
-			     BTREE_ITER_intent);
+			     BTREE_ITER_ALL_SNAPSHOTS|
+			     BTREE_ITER_INTENT);
 again:
 	while ((k = bch2_btree_iter_peek(iter)).k &&
 	       !(ret = bkey_err(k)) &&
@@ -814,7 +824,7 @@ static int bch2_inode_delete_keys(struct btree_trans *trans,
 	 * extent iterator:
 	 */
 	bch2_trans_iter_init(trans, &iter, id, POS(inum.inum, 0),
-			     BTREE_ITER_intent);
+			     BTREE_ITER_INTENT);
 
 	while (1) {
 		bch2_trans_begin(trans);
@@ -836,7 +846,7 @@ static int bch2_inode_delete_keys(struct btree_trans *trans,
 		bkey_init(&delete.k);
 		delete.k.p = iter.pos;
 
-		if (iter.flags & BTREE_ITER_is_extents)
+		if (iter.flags & BTREE_ITER_IS_EXTENTS)
 			bch2_key_resize(&delete.k,
 					bpos_min(end, k.k->p).offset -
 					iter.pos.offset);
@@ -885,7 +895,7 @@ retry:
 
 	k = bch2_bkey_get_iter(trans, &iter, BTREE_ID_inodes,
 			       SPOS(0, inum.inum, snapshot),
-			       BTREE_ITER_intent|BTREE_ITER_cached);
+			       BTREE_ITER_INTENT|BTREE_ITER_CACHED);
 	ret = bkey_err(k);
 	if (ret)
 		goto err;
@@ -1045,7 +1055,7 @@ retry:
 	bch2_trans_begin(trans);
 
 	k = bch2_bkey_get_iter(trans, &iter, BTREE_ID_inodes,
-			       SPOS(0, inum, snapshot), BTREE_ITER_intent);
+			       SPOS(0, inum, snapshot), BTREE_ITER_INTENT);
 	ret = bkey_err(k);
 	if (ret)
 		goto err;
@@ -1090,7 +1100,7 @@ static int may_delete_deleted_inode(struct btree_trans *trans,
 	struct bch_inode_unpacked inode;
 	int ret;
 
-	k = bch2_bkey_get_iter(trans, &inode_iter, BTREE_ID_inodes, pos, BTREE_ITER_cached);
+	k = bch2_bkey_get_iter(trans, &inode_iter, BTREE_ID_inodes, pos, BTREE_ITER_CACHED);
 	ret = bkey_err(k);
 	if (ret)
 		return ret;
@@ -1142,7 +1152,7 @@ static int may_delete_deleted_inode(struct btree_trans *trans,
 		inode.bi_flags &= ~BCH_INODE_unlinked;
 
 		ret = bch2_inode_write_flags(trans, &inode_iter, &inode,
-					     BTREE_UPDATE_internal_snapshot_node);
+					     BTREE_UPDATE_INTERNAL_SNAPSHOT_NODE);
 		bch_err_msg(c, ret, "clearing inode unlinked flag");
 		if (ret)
 			goto out;
@@ -1189,7 +1199,7 @@ again:
 	 * flushed and we'd spin:
 	 */
 	ret = for_each_btree_key_commit(trans, iter, BTREE_ID_deleted_inodes, POS_MIN,
-					BTREE_ITER_prefetch|BTREE_ITER_all_snapshots, k,
+					BTREE_ITER_PREFETCH|BTREE_ITER_ALL_SNAPSHOTS, k,
 					NULL, NULL, BCH_TRANS_COMMIT_no_enospc, ({
 		ret = may_delete_deleted_inode(trans, &iter, k.k->p, &need_another_pass);
 		if (ret > 0) {

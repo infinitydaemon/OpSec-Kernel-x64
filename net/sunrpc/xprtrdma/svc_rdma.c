@@ -209,6 +209,7 @@ static struct ctl_table svcrdma_parm_table[] = {
 		.extra1		= &zero,
 		.extra2		= &zero,
 	},
+	{ },
 };
 
 static void svc_rdma_proc_cleanup(void)

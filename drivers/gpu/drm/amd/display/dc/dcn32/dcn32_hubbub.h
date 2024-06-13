@@ -118,25 +118,25 @@
 
 bool hubbub32_program_urgent_watermarks(
 		struct hubbub *hubbub,
-		union dcn_watermark_set *watermarks,
+		struct dcn_watermark_set *watermarks,
 		unsigned int refclk_mhz,
 		bool safe_to_lower);
 
 bool hubbub32_program_stutter_watermarks(
 		struct hubbub *hubbub,
-		union dcn_watermark_set *watermarks,
+		struct dcn_watermark_set *watermarks,
 		unsigned int refclk_mhz,
 		bool safe_to_lower);
 
 bool hubbub32_program_pstate_watermarks(
 		struct hubbub *hubbub,
-		union dcn_watermark_set *watermarks,
+		struct dcn_watermark_set *watermarks,
 		unsigned int refclk_mhz,
 		bool safe_to_lower);
 
 bool hubbub32_program_usr_watermarks(
 		struct hubbub *hubbub,
-		union dcn_watermark_set *watermarks,
+		struct dcn_watermark_set *watermarks,
 		unsigned int refclk_mhz,
 		bool safe_to_lower);
 

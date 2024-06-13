@@ -15,7 +15,6 @@
 enum {
 	CLK_ALPHA_PLL_TYPE_DEFAULT,
 	CLK_ALPHA_PLL_TYPE_HUAYRA,
-	CLK_ALPHA_PLL_TYPE_HUAYRA_APSS,
 	CLK_ALPHA_PLL_TYPE_BRAMMO,
 	CLK_ALPHA_PLL_TYPE_FABIA,
 	CLK_ALPHA_PLL_TYPE_TRION,
@@ -74,10 +73,8 @@ struct pll_vco {
 /**
  * struct clk_alpha_pll - phase locked loop (PLL)
  * @offset: base address of registers
- * @regs: alpha pll register map (see @clk_alpha_pll_regs)
  * @vco_table: array of VCO settings
- * @num_vco: number of VCO settings in @vco_table
- * @flags: bitmask to indicate features supported by the hardware
+ * @regs: alpha pll register map (see @clk_alpha_pll_regs)
  * @clkr: regmap clock handle
  */
 struct clk_alpha_pll {

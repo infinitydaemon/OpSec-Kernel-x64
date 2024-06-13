@@ -253,9 +253,8 @@ IRQCHIP_DECLARE(andes, "andestech,cpu-intc", riscv_intc_init);
 static int __init riscv_intc_acpi_init(union acpi_subtable_headers *header,
 				       const unsigned long end)
 {
-	struct acpi_madt_rintc *rintc;
 	struct fwnode_handle *fn;
-	int rc;
+	struct acpi_madt_rintc *rintc;
 
 	rintc = (struct acpi_madt_rintc *)header;
 
@@ -274,11 +273,7 @@ static int __init riscv_intc_acpi_init(union acpi_subtable_headers *header,
 		return -ENOMEM;
 	}
 
-	rc = riscv_intc_init_common(fn, &riscv_intc_chip);
-	if (rc)
-		irq_domain_free_fwnode(fn);
-
-	return rc;
+	return riscv_intc_init_common(fn, &riscv_intc_chip);
 }
 
 IRQCHIP_ACPI_DECLARE(riscv_intc, ACPI_MADT_TYPE_RINTC, NULL,

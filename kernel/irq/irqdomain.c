@@ -909,11 +909,10 @@ EXPORT_SYMBOL_GPL(irq_create_of_mapping);
  */
 void irq_dispose_mapping(unsigned int virq)
 {
-	struct irq_data *irq_data;
+	struct irq_data *irq_data = irq_get_irq_data(virq);
 	struct irq_domain *domain;
 
-	irq_data = virq ? irq_get_irq_data(virq) : NULL;
-	if (!irq_data)
+	if (!virq || !irq_data)
 		return;
 
 	domain = irq_data->domain;

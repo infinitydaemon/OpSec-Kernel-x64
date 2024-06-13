@@ -2,7 +2,6 @@
 #ifndef __LINUX_PWM_H
 #define __LINUX_PWM_H
 
-#include <linux/device.h>
 #include <linux/err.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
@@ -273,11 +272,11 @@ struct pwm_ops {
  * @npwm: number of PWMs controlled by this chip
  * @of_xlate: request a PWM device given a device tree PWM specifier
  * @atomic: can the driver's ->apply() be called in atomic context
- * @uses_pwmchip_alloc: signals if pwmchip_allow was used to allocate this chip
+ * @driver_data: Private pointer for driver specific info
  * @pwms: array of PWM devices allocated by the framework
  */
 struct pwm_chip {
-	struct device dev;
+	struct device *dev;
 	const struct pwm_ops *ops;
 	struct module *owner;
 	unsigned int id;
@@ -288,23 +287,31 @@ struct pwm_chip {
 	bool atomic;
 
 	/* only used internally by the PWM framework */
-	bool uses_pwmchip_alloc;
-	struct pwm_device pwms[] __counted_by(npwm);
+	void *driver_data;
+	struct pwm_device *pwms;
 };
 
 static inline struct device *pwmchip_parent(const struct pwm_chip *chip)
 {
-	return chip->dev.parent;
+	return chip->dev;
 }
 
 static inline void *pwmchip_get_drvdata(struct pwm_chip *chip)
 {
-	return dev_get_drvdata(&chip->dev);
+	/*
+	 * After pwm_chip got a dedicated struct device, this can be replaced by
+	 * dev_get_drvdata(&chip->dev);
+	 */
+	return chip->driver_data;
 }
 
 static inline void pwmchip_set_drvdata(struct pwm_chip *chip, void *data)
 {
-	dev_set_drvdata(&chip->dev, data);
+	/*
+	 * After pwm_chip got a dedicated struct device, this can be replaced by
+	 * dev_set_drvdata(&chip->dev, data);
+	 */
+	chip->driver_data = data;
 }
 
 #if IS_ENABLED(CONFIG_PWM)
@@ -620,5 +627,18 @@ static inline void pwm_remove_table(struct pwm_lookup *table, size_t num)
 {
 }
 #endif
+
+#ifdef CONFIG_PWM_SYSFS
+void pwmchip_sysfs_export(struct pwm_chip *chip);
+void pwmchip_sysfs_unexport(struct pwm_chip *chip);
+#else
+static inline void pwmchip_sysfs_export(struct pwm_chip *chip)
+{
+}
+
+static inline void pwmchip_sysfs_unexport(struct pwm_chip *chip)
+{
+}
+#endif /* CONFIG_PWM_SYSFS */
 
 #endif /* __LINUX_PWM_H */

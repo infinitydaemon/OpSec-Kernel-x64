@@ -89,25 +89,11 @@ static void fsnotify_unmount_inodes(struct super_block *sb)
 
 void fsnotify_sb_delete(struct super_block *sb)
 {
-	struct fsnotify_sb_info *sbinfo = fsnotify_sb_info(sb);
-
-	/* Were any marks ever added to any object on this sb? */
-	if (!sbinfo)
-		return;
-
 	fsnotify_unmount_inodes(sb);
 	fsnotify_clear_marks_by_sb(sb);
 	/* Wait for outstanding object references from connectors */
-	wait_var_event(fsnotify_sb_watched_objects(sb),
-		       !atomic_long_read(fsnotify_sb_watched_objects(sb)));
-	WARN_ON(fsnotify_sb_has_priority_watchers(sb, FSNOTIFY_PRIO_CONTENT));
-	WARN_ON(fsnotify_sb_has_priority_watchers(sb,
-						  FSNOTIFY_PRIO_PRE_CONTENT));
-}
-
-void fsnotify_sb_free(struct super_block *sb)
-{
-	kfree(sb->s_fsnotify_info);
+	wait_var_event(&sb->s_fsnotify_connectors,
+		       !atomic_long_read(&sb->s_fsnotify_connectors));
 }
 
 /*
@@ -503,7 +489,6 @@ int fsnotify(__u32 mask, const void *data, int data_type, struct inode *dir,
 {
 	const struct path *path = fsnotify_data_path(data, data_type);
 	struct super_block *sb = fsnotify_data_sb(data, data_type);
-	struct fsnotify_sb_info *sbinfo = fsnotify_sb_info(sb);
 	struct fsnotify_iter_info iter_info = {};
 	struct mount *mnt = NULL;
 	struct inode *inode2 = NULL;
@@ -540,7 +525,7 @@ int fsnotify(__u32 mask, const void *data, int data_type, struct inode *dir,
 	 * SRCU because we have no references to any objects and do not
 	 * need SRCU to keep them "alive".
 	 */
-	if ((!sbinfo || !sbinfo->sb_marks) &&
+	if (!sb->s_fsnotify_marks &&
 	    (!mnt || !mnt->mnt_fsnotify_marks) &&
 	    (!inode || !inode->i_fsnotify_marks) &&
 	    (!inode2 || !inode2->i_fsnotify_marks))
@@ -567,10 +552,8 @@ int fsnotify(__u32 mask, const void *data, int data_type, struct inode *dir,
 
 	iter_info.srcu_idx = srcu_read_lock(&fsnotify_mark_srcu);
 
-	if (sbinfo) {
-		iter_info.marks[FSNOTIFY_ITER_TYPE_SB] =
-			fsnotify_first_mark(&sbinfo->sb_marks);
-	}
+	iter_info.marks[FSNOTIFY_ITER_TYPE_SB] =
+		fsnotify_first_mark(&sb->s_fsnotify_marks);
 	if (mnt) {
 		iter_info.marks[FSNOTIFY_ITER_TYPE_VFSMOUNT] =
 			fsnotify_first_mark(&mnt->mnt_fsnotify_marks);

@@ -7,7 +7,7 @@
 #include "rk3588.dtsi"
 
 / {
-	model = "Radxa ROCK 5B";
+	model = "Radxa ROCK 5 Model B";
 	compatible = "radxa,rock-5b", "rockchip,rk3588";
 
 	aliases {
@@ -178,11 +178,6 @@
 
 &cpu_l3 {
 	cpu-supply = <&vdd_cpu_lit_s0>;
-};
-
-&gpu {
-	mali-supply = <&vdd_gpu_s0>;
-	status = "okay";
 };
 
 &i2c0 {
@@ -747,14 +742,6 @@
 	status = "okay";
 };
 
-&u2phy1 {
-	status = "okay";
-};
-
-&u2phy1_otg {
-	status = "okay";
-};
-
 &u2phy2 {
 	status = "okay";
 };
@@ -774,10 +761,6 @@
 	status = "okay";
 };
 
-&usbdp_phy1 {
-	status = "okay";
-};
-
 &usb_host0_ehci {
 	status = "okay";
 };
@@ -791,11 +774,6 @@
 };
 
 &usb_host1_ohci {
-	status = "okay";
-};
-
-&usb_host1_xhci {
-	dr_mode = "host";
 	status = "okay";
 };
 

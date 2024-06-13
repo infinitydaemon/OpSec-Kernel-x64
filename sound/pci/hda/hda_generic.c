@@ -6021,6 +6021,7 @@ void snd_hda_gen_free(struct hda_codec *codec)
 }
 EXPORT_SYMBOL_GPL(snd_hda_gen_free);
 
+#ifdef CONFIG_PM
 /**
  * snd_hda_gen_check_power_status - check the loopback power save state
  * @codec: the HDA codec
@@ -6034,6 +6035,7 @@ int snd_hda_gen_check_power_status(struct hda_codec *codec, hda_nid_t nid)
 	return snd_hda_check_amp_list_power(codec, &spec->loopback, nid);
 }
 EXPORT_SYMBOL_GPL(snd_hda_gen_check_power_status);
+#endif
 
 
 /*
@@ -6046,7 +6048,9 @@ static const struct hda_codec_ops generic_patch_ops = {
 	.init = snd_hda_gen_init,
 	.free = snd_hda_gen_free,
 	.unsol_event = snd_hda_jack_unsol_event,
+#ifdef CONFIG_PM
 	.check_power_status = snd_hda_gen_check_power_status,
+#endif
 };
 
 /*

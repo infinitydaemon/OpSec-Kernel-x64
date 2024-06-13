@@ -22,7 +22,6 @@
 #include <subcmd/pager.h>
 #include <subcmd/parse-options.h>
 #include <linux/zalloc.h>
-#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -77,38 +76,26 @@ static void default_print_start(void *ps)
 
 static void default_print_end(void *print_state __maybe_unused) {}
 
-static const char *skip_spaces_or_commas(const char *str)
-{
-	while (isspace(*str) || *str == ',')
-		++str;
-	return str;
-}
-
 static void wordwrap(FILE *fp, const char *s, int start, int max, int corr)
 {
 	int column = start;
 	int n;
 	bool saw_newline = false;
-	bool comma = false;
 
 	while (*s) {
-		int wlen = strcspn(s, " ,\t\n");
-		const char *sep = comma ? "," : " ";
+		int wlen = strcspn(s, " \t\n");
 
 		if ((column + wlen >= max && column > start) || saw_newline) {
-			fprintf(fp, comma ? ",\n%*s" : "\n%*s", start, "");
+			fprintf(fp, "\n%*s", start, "");
 			column = start + corr;
 		}
-		if (column <= start)
-			sep = "";
-		n = fprintf(fp, "%s%.*s", sep, wlen, s);
+		n = fprintf(fp, "%s%.*s", column > start ? " " : "", wlen, s);
 		if (n <= 0)
 			break;
 		saw_newline = s[wlen] == '\n';
 		s += wlen;
-		comma = s[0] == ',';
 		column += n;
-		s = skip_spaces_or_commas(s);
+		s = skip_spaces(s);
 	}
 }
 
@@ -325,9 +312,6 @@ static void fix_escape_fprintf(FILE *fp, struct strbuf *buf, const char *fmt, ..
 					switch (s[s_pos]) {
 					case '\n':
 						strbuf_addstr(buf, "\\n");
-						break;
-					case '\r':
-						strbuf_addstr(buf, "\\r");
 						break;
 					case '\\':
 						fallthrough;

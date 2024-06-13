@@ -85,15 +85,13 @@ static void coreboot_device_release(struct device *dev)
 	kfree(device);
 }
 
-int __coreboot_driver_register(struct coreboot_driver *driver,
-			       struct module *owner)
+int coreboot_driver_register(struct coreboot_driver *driver)
 {
 	driver->drv.bus = &coreboot_bus_type;
-	driver->drv.owner = owner;
 
 	return driver_register(&driver->drv);
 }
-EXPORT_SYMBOL(__coreboot_driver_register);
+EXPORT_SYMBOL(coreboot_driver_register);
 
 void coreboot_driver_unregister(struct coreboot_driver *driver)
 {

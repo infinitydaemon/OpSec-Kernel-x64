@@ -35,9 +35,13 @@ static u64 limit_nv_id_reg(u32 id, u64 val)
 		break;
 
 	case SYS_ID_AA64ISAR1_EL1:
-		/* Support everything but Spec Invalidation */
+		/* Support everything but PtrAuth and Spec Invalidation */
 		val &= ~(GENMASK_ULL(63, 56)	|
-			 NV_FTR(ISAR1, SPECRES));
+			 NV_FTR(ISAR1, SPECRES)	|
+			 NV_FTR(ISAR1, GPI)	|
+			 NV_FTR(ISAR1, GPA)	|
+			 NV_FTR(ISAR1, API)	|
+			 NV_FTR(ISAR1, APA));
 		break;
 
 	case SYS_ID_AA64PFR0_EL1:
@@ -58,10 +62,8 @@ static u64 limit_nv_id_reg(u32 id, u64 val)
 		break;
 
 	case SYS_ID_AA64PFR1_EL1:
-		/* Only support BTI, SSBS, CSV2_frac */
-		val &= (NV_FTR(PFR1, BT)	|
-			NV_FTR(PFR1, SSBS)	|
-			NV_FTR(PFR1, CSV2_frac));
+		/* Only support SSBS */
+		val &= NV_FTR(PFR1, SSBS);
 		break;
 
 	case SYS_ID_AA64MMFR0_EL1:

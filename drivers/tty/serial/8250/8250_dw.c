@@ -100,18 +100,14 @@ static void dw8250_force_idle(struct uart_port *p)
 	(void)p->serial_in(p, UART_RX);
 }
 
-static void dw8250_check_lcr(struct uart_port *p, int offset, int value)
+static void dw8250_check_lcr(struct uart_port *p, int value)
 {
-	struct dw8250_data *d = to_dw8250_data(p->private_data);
-	void __iomem *addr = p->membase + (offset << p->regshift);
+	void __iomem *offset = p->membase + (UART_LCR << p->regshift);
 	int tries = 1000;
-
-	if (offset != UART_LCR || d->uart_16550_compatible)
-		return;
 
 	/* Make sure LCR write wasn't ignored */
 	while (tries--) {
-		unsigned int lcr = p->serial_in(p, offset);
+		unsigned int lcr = p->serial_in(p, UART_LCR);
 
 		if ((value & ~UART_LCR_SPAR) == (lcr & ~UART_LCR_SPAR))
 			return;
@@ -120,15 +116,15 @@ static void dw8250_check_lcr(struct uart_port *p, int offset, int value)
 
 #ifdef CONFIG_64BIT
 		if (p->type == PORT_OCTEON)
-			__raw_writeq(value & 0xff, addr);
+			__raw_writeq(value & 0xff, offset);
 		else
 #endif
 		if (p->iotype == UPIO_MEM32)
-			writel(value, addr);
+			writel(value, offset);
 		else if (p->iotype == UPIO_MEM32BE)
-			iowrite32be(value, addr);
+			iowrite32be(value, offset);
 		else
-			writeb(value, addr);
+			writeb(value, offset);
 	}
 	/*
 	 * FIXME: this deadlocks if port->lock is already held
@@ -162,8 +158,12 @@ static void dw8250_tx_wait_empty(struct uart_port *p)
 
 static void dw8250_serial_out(struct uart_port *p, int offset, int value)
 {
+	struct dw8250_data *d = to_dw8250_data(p->private_data);
+
 	writeb(value, p->membase + (offset << p->regshift));
-	dw8250_check_lcr(p, offset, value);
+
+	if (offset == UART_LCR && !d->uart_16550_compatible)
+		dw8250_check_lcr(p, value);
 }
 
 static void dw8250_serial_out38x(struct uart_port *p, int offset, int value)
@@ -185,26 +185,35 @@ static unsigned int dw8250_serial_in(struct uart_port *p, int offset)
 #ifdef CONFIG_64BIT
 static unsigned int dw8250_serial_inq(struct uart_port *p, int offset)
 {
-	u8 value = __raw_readq(p->membase + (offset << p->regshift));
+	unsigned int value;
+
+	value = (u8)__raw_readq(p->membase + (offset << p->regshift));
 
 	return dw8250_modify_msr(p, offset, value);
 }
 
 static void dw8250_serial_outq(struct uart_port *p, int offset, int value)
 {
+	struct dw8250_data *d = to_dw8250_data(p->private_data);
+
 	value &= 0xff;
 	__raw_writeq(value, p->membase + (offset << p->regshift));
 	/* Read back to ensure register write ordering. */
 	__raw_readq(p->membase + (UART_LCR << p->regshift));
 
-	dw8250_check_lcr(p, offset, value);
+	if (offset == UART_LCR && !d->uart_16550_compatible)
+		dw8250_check_lcr(p, value);
 }
 #endif /* CONFIG_64BIT */
 
 static void dw8250_serial_out32(struct uart_port *p, int offset, int value)
 {
+	struct dw8250_data *d = to_dw8250_data(p->private_data);
+
 	writel(value, p->membase + (offset << p->regshift));
-	dw8250_check_lcr(p, offset, value);
+
+	if (offset == UART_LCR && !d->uart_16550_compatible)
+		dw8250_check_lcr(p, value);
 }
 
 static unsigned int dw8250_serial_in32(struct uart_port *p, int offset)
@@ -216,8 +225,12 @@ static unsigned int dw8250_serial_in32(struct uart_port *p, int offset)
 
 static void dw8250_serial_out32be(struct uart_port *p, int offset, int value)
 {
+	struct dw8250_data *d = to_dw8250_data(p->private_data);
+
 	iowrite32be(value, p->membase + (offset << p->regshift));
-	dw8250_check_lcr(p, offset, value);
+
+	if (offset == UART_LCR && !d->uart_16550_compatible)
+		dw8250_check_lcr(p, value);
 }
 
 static unsigned int dw8250_serial_in32be(struct uart_port *p, int offset)

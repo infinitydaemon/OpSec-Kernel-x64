@@ -39,7 +39,7 @@ PHDRS {
 
 SECTIONS
 {
-	. = __START_KERNEL;
+	. = 0x100000;
 	.text : {
 		_stext = .;		/* Start of text section */
 		_text = .;		/* Text and read-only data */
@@ -183,7 +183,7 @@ SECTIONS
 	.amode31.data : {
 		*(.amode31.data)
 	}
-	. = _samode31 + AMODE31_SIZE;
+	. = ALIGN(PAGE_SIZE);
 	_eamode31 = .;
 
 	/* early.c uses stsi, which requires page aligned data. */
@@ -191,6 +191,31 @@ SECTIONS
 	INIT_DATA_SECTION(0x100)
 
 	PERCPU_SECTION(0x100)
+
+#ifdef CONFIG_PIE_BUILD
+	.dynsym ALIGN(8) : {
+		__dynsym_start = .;
+		*(.dynsym)
+		__dynsym_end = .;
+	}
+	.rela.dyn ALIGN(8) : {
+		__rela_dyn_start = .;
+		*(.rela*)
+		__rela_dyn_end = .;
+	}
+	.dynamic ALIGN(8) : {
+		*(.dynamic)
+	}
+	.dynstr ALIGN(8) : {
+		*(.dynstr)
+	}
+	.hash ALIGN(8) : {
+		*(.hash)
+	}
+	.gnu.hash ALIGN(8) : {
+		*(.gnu.hash)
+	}
+#endif
 
 	. = ALIGN(PAGE_SIZE);
 	__init_end = .;		/* freed after init ends here */
@@ -205,6 +230,7 @@ SECTIONS
 	 * it should match struct vmlinux_info
 	 */
 	.vmlinux.info 0 (INFO) : {
+		QUAD(_stext)					/* default_lma */
 		QUAD(startup_continue)				/* entry */
 		QUAD(__bss_start - _stext)			/* image_size */
 		QUAD(__bss_stop - __bss_start)			/* bss_size */
@@ -213,8 +239,14 @@ SECTIONS
 		QUAD(__boot_data_preserved_start)		/* bootdata_preserved_off */
 		QUAD(__boot_data_preserved_end -
 		     __boot_data_preserved_start)		/* bootdata_preserved_size */
+#ifdef CONFIG_PIE_BUILD
+		QUAD(__dynsym_start)				/* dynsym_start */
+		QUAD(__rela_dyn_start)				/* rela_dyn_start */
+		QUAD(__rela_dyn_end)				/* rela_dyn_end */
+#else
 		QUAD(__got_start)				/* got_start */
 		QUAD(__got_end)					/* got_end */
+#endif
 		QUAD(_eamode31 - _samode31)			/* amode31_size */
 		QUAD(init_mm)
 		QUAD(swapper_pg_dir)
@@ -250,10 +282,12 @@ SECTIONS
 		*(.plt) *(.plt.*) *(.iplt) *(.igot .igot.plt)
 	}
 	ASSERT(SIZEOF(.plt) == 0, "Unexpected run-time procedure linkages detected!")
+#ifndef CONFIG_PIE_BUILD
 	.rela.dyn : {
 		*(.rela.*) *(.rela_*)
 	}
 	ASSERT(SIZEOF(.rela.dyn) == 0, "Unexpected run-time relocations (.rela) detected!")
+#endif
 
 	/* Sections to be discarded */
 	DISCARDS

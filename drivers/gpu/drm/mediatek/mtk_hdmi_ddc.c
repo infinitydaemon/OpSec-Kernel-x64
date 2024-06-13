@@ -284,7 +284,8 @@ static int mtk_hdmi_ddc_probe(struct platform_device *pdev)
 		return PTR_ERR(ddc->clk);
 	}
 
-	ddc->regs = devm_platform_get_and_ioremap_resource(pdev, 0, &mem);
+	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	ddc->regs = devm_ioremap_resource(&pdev->dev, mem);
 	if (IS_ERR(ddc->regs))
 		return PTR_ERR(ddc->regs);
 

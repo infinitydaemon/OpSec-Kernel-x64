@@ -405,7 +405,7 @@ static void __init cpu_init_thread_core_maps(int tpc)
 		cpumask_set_cpu(i, &threads_core_mask);
 
 	printk(KERN_INFO "CPU maps initialized for %d thread%s per core\n",
-	       tpc, str_plural(tpc));
+	       tpc, tpc > 1 ? "s" : "");
 	printk(KERN_DEBUG " (thread shift is %d)\n", threads_shift);
 }
 

@@ -17,27 +17,6 @@ static const char nohelp_text[] = "There is no help available for this option.";
 struct menu rootmenu;
 static struct menu **last_entry_ptr;
 
-/**
- * menu_next - return the next menu entry with depth-first traversal
- * @menu: pointer to the current menu
- * @root: root of the sub-tree to traverse. If NULL is given, the traveral
- *        continues until it reaches the end of the entire menu tree.
- * return: the menu to visit next, or NULL when it reaches the end.
- */
-struct menu *menu_next(struct menu *menu, struct menu *root)
-{
-	if (menu->list)
-		return menu->list;
-
-	while (menu != root && !menu->next)
-		menu = menu->parent;
-
-	if (menu == root)
-		return NULL;
-
-	return menu->next;
-}
-
 void menu_warn(struct menu *menu, const char *fmt, ...)
 {
 	va_list ap;
@@ -263,9 +242,11 @@ static void sym_check_prop(struct symbol *sym)
 					    sym->name);
 			}
 			if (sym_is_choice(sym)) {
-				struct menu *choice = sym_get_choice_menu(sym2);
+				struct property *choice_prop =
+					sym_get_choice_prop(sym2);
 
-				if (!choice || choice->sym != sym)
+				if (!choice_prop ||
+				    prop_get_symbol(choice_prop) != sym)
 					prop_warn(prop,
 						  "choice default symbol '%s' is not contained in the choice",
 						  sym2->name);
@@ -398,6 +379,8 @@ static void _menu_finalize(struct menu *parent, bool inside_choice)
 				dep = expr_transform(dep);
 				dep = expr_alloc_and(expr_copy(basedep), dep);
 				dep = expr_eliminate_dups(dep);
+				if (menu->sym && menu->sym->type != S_TRISTATE)
+					dep = expr_trans_bool(dep);
 				prop->visible.expr = dep;
 
 				/*
@@ -503,6 +486,18 @@ static void _menu_finalize(struct menu *parent, bool inside_choice)
 		    menu->sym && !sym_is_choice_value(menu->sym)) {
 			current_entry = menu;
 			menu->sym->flags |= SYMBOL_CHOICEVAL;
+			if (!menu->prompt)
+				menu_warn(menu, "choice value must have a prompt");
+			for (prop = menu->sym->prop; prop; prop = prop->next) {
+				if (prop->type == P_DEFAULT)
+					prop_warn(prop, "defaults for choice "
+						  "values not supported");
+				if (prop->menu == menu)
+					continue;
+				if (prop->type == P_PROMPT &&
+				    prop->menu->parent->sym != sym)
+					prop_warn(prop, "choice value used outside its choice group");
+			}
 			/* Non-tristate choice values of tristate choices must
 			 * depend on the choice being set to Y. The choice
 			 * values' dependencies were propagated to their
@@ -577,11 +572,15 @@ static void _menu_finalize(struct menu *parent, bool inside_choice)
 	}
 
 	/*
-	 * For choices, add a reverse dependency (corresponding to a select) of
-	 * '<visibility> && m'. This prevents the user from setting the choice
-	 * mode to 'n' when the choice is visible.
+	 * For non-optional choices, add a reverse dependency (corresponding to
+	 * a select) of '<visibility> && m'. This prevents the user from
+	 * setting the choice mode to 'n' when the choice is visible.
+	 *
+	 * This would also work for non-choice symbols, but only non-optional
+	 * choices clear SYMBOL_OPTIONAL as of writing. Choices are implemented
+	 * as a type of symbol.
 	 */
-	if (sym && sym_is_choice(sym) && parent->prompt) {
+	if (sym && !sym_is_optional(sym) && parent->prompt) {
 		sym->rev_dep.expr = expr_alloc_or(sym->rev_dep.expr,
 				expr_alloc_and(parent->prompt->visible.expr,
 					expr_alloc_symbol(&symbol_mod)));

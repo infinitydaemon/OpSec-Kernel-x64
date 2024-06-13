@@ -6451,7 +6451,7 @@ int hci_le_create_cis_sync(struct hci_dev *hdev)
 		cis->cis_handle = cpu_to_le16(conn->handle);
 		aux_num_cis++;
 
-		if (aux_num_cis >= cmd->num_cis)
+		if (aux_num_cis >= 0x1f)
 			break;
 	}
 	cmd->num_cis = aux_num_cis;

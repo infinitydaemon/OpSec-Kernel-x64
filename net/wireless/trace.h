@@ -372,7 +372,7 @@ TRACE_EVENT(rdev_add_virtual_intf,
 	),
 	TP_fast_assign(
 		WIPHY_ASSIGN;
-		__assign_str(vir_intf_name);
+		__assign_str(vir_intf_name, name ? name : "<noname>");
 		__entry->type = type;
 	),
 	TP_printk(WIPHY_PR_FMT ", virtual intf name: %s, type: %d",
@@ -2842,7 +2842,6 @@ TRACE_EVENT(rdev_color_change,
 		__field(u8, count)
 		__field(u16, bcn_ofs)
 		__field(u16, pres_ofs)
-		__field(u8, link_id)
 	),
 	TP_fast_assign(
 		WIPHY_ASSIGN;
@@ -2850,12 +2849,11 @@ TRACE_EVENT(rdev_color_change,
 		__entry->count = params->count;
 		__entry->bcn_ofs = params->counter_offset_beacon;
 		__entry->pres_ofs = params->counter_offset_presp;
-		__entry->link_id = params->link_id;
 	),
 	TP_printk(WIPHY_PR_FMT ", " NETDEV_PR_FMT
-		  ", count: %u, link_id: %d",
+		  ", count: %u",
 		  WIPHY_PR_ARG, NETDEV_PR_ARG,
-		  __entry->count, __entry->link_id)
+		  __entry->count)
 );
 
 TRACE_EVENT(rdev_set_radar_background,

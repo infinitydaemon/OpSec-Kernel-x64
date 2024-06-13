@@ -192,6 +192,12 @@ const char *iwl_drv_get_fwname_pre(struct iwl_trans *trans, char *buf)
 	case IWL_CFG_RF_TYPE_GF:
 		rf = "gf";
 		break;
+	case IWL_CFG_RF_TYPE_MR:
+		rf = "mr";
+		break;
+	case IWL_CFG_RF_TYPE_MS:
+		rf = "ms";
+		break;
 	case IWL_CFG_RF_TYPE_FM:
 		rf = "fm";
 		break;
@@ -1815,8 +1821,8 @@ struct iwl_drv *iwl_drv_start(struct iwl_trans *trans)
 err_fw:
 #ifdef CONFIG_IWLWIFI_DEBUGFS
 	debugfs_remove_recursive(drv->dbgfs_drv);
-#endif
 	iwl_dbg_tlv_free(drv->trans);
+#endif
 	kfree(drv);
 err:
 	return ERR_PTR(ret);

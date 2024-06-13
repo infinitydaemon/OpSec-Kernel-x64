@@ -1,10 +1,8 @@
 .. SPDX-License-Identifier: GPL-2.0
 
-The mgb4 driver
-===============
-
-sysfs interface
----------------
+====================
+mgb4 sysfs interface
+====================
 
 The mgb4 driver provides a sysfs interface, that is used to configure video
 stream related parameters (some of them must be set properly before the v4l2
@@ -14,8 +12,9 @@ There are two types of parameters - global / PCI card related, found under
 ``/sys/class/video4linux/videoX/device`` and module specific found under
 ``/sys/class/video4linux/videoX``.
 
+
 Global (PCI card) parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+============================
 
 **module_type** (R):
     Module type.
@@ -43,8 +42,9 @@ Global (PCI card) parameters
 
     where each component is a 8b number.
 
+
 Common FPDL3/GMSL input parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+==================================
 
 **input_id** (R):
     Input number ID, zero based.
@@ -190,8 +190,9 @@ Common FPDL3/GMSL input parameters
     *Note: This parameter can not be changed while the input v4l2 device is
     open.*
 
+
 Common FPDL3/GMSL output parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+===================================
 
 **output_id** (R):
     Output number ID, zero based.
@@ -281,8 +282,9 @@ Common FPDL3/GMSL output parameters
     Number of video lines between the end of the last valid pixel line (marked
     by DE=1) and assertion of the VSYNC signal. The default value is 2.
 
+
 FPDL3 specific input parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+===============================
 
 **fpdl3_input_width** (RW):
     Number of deserializer input lines.
@@ -292,7 +294,7 @@ FPDL3 specific input parameters
     | 2 - dual
 
 FPDL3 specific output parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+================================
 
 **fpdl3_output_width** (RW):
     Number of serializer output lines.
@@ -302,7 +304,7 @@ FPDL3 specific output parameters
     | 2 - dual
 
 GMSL specific input parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+==============================
 
 **gmsl_mode** (RW):
     GMSL speed mode.
@@ -326,8 +328,10 @@ GMSL specific input parameters
     | 0 - disabled
     | 1 - enabled (default)
 
-MTD partitions
---------------
+
+====================
+mgb4 mtd partitions
+====================
 
 The mgb4 driver creates a MTD device with two partitions:
  - mgb4-fw.X - FPGA firmware.
@@ -340,8 +344,9 @@ also have a third partition named *mgb4-flash* available in the system. This
 partition represents the whole, unpartitioned, card's FLASH memory and one should
 not fiddle with it...
 
-IIO (triggers)
---------------
+====================
+mgb4 iio (triggers)
+====================
 
 The mgb4 driver creates an Industrial I/O (IIO) device that provides trigger and
 signal level status capability. The following scan elements are available:

@@ -375,6 +375,8 @@ void squashfs_fill_page(struct page *page, struct squashfs_cache_entry *buffer, 
 	flush_dcache_page(page);
 	if (copied == avail)
 		SetPageUptodate(page);
+	else
+		SetPageError(page);
 }
 
 /* Copy data into page cache  */
@@ -469,7 +471,7 @@ static int squashfs_read_folio(struct file *file, struct folio *folio)
 
 		res = read_blocklist(inode, index, &block);
 		if (res < 0)
-			goto out;
+			goto error_out;
 
 		if (res == 0)
 			res = squashfs_readpage_sparse(page, expected);
@@ -481,6 +483,8 @@ static int squashfs_read_folio(struct file *file, struct folio *folio)
 	if (!res)
 		return 0;
 
+error_out:
+	SetPageError(page);
 out:
 	pageaddr = kmap_atomic(page);
 	memset(pageaddr, 0, PAGE_SIZE);

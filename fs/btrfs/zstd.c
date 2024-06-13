@@ -374,25 +374,25 @@ fail:
 	return ERR_PTR(-ENOMEM);
 }
 
-int zstd_compress_folios(struct list_head *ws, struct address_space *mapping,
-			 u64 start, struct folio **folios, unsigned long *out_folios,
-			 unsigned long *total_in, unsigned long *total_out)
+int zstd_compress_pages(struct list_head *ws, struct address_space *mapping,
+		u64 start, struct page **pages, unsigned long *out_pages,
+		unsigned long *total_in, unsigned long *total_out)
 {
 	struct workspace *workspace = list_entry(ws, struct workspace, list);
 	zstd_cstream *stream;
 	int ret = 0;
-	int nr_folios = 0;
-	struct folio *in_folio = NULL;  /* The current folio to read. */
-	struct folio *out_folio = NULL; /* The current folio to write to. */
+	int nr_pages = 0;
+	struct page *in_page = NULL;  /* The current page to read */
+	struct page *out_page = NULL; /* The current page to write to */
 	unsigned long tot_in = 0;
 	unsigned long tot_out = 0;
 	unsigned long len = *total_out;
-	const unsigned long nr_dest_folios = *out_folios;
-	unsigned long max_out = nr_dest_folios * PAGE_SIZE;
+	const unsigned long nr_dest_pages = *out_pages;
+	unsigned long max_out = nr_dest_pages * PAGE_SIZE;
 	zstd_parameters params = zstd_get_btrfs_parameters(workspace->req_level,
 							   len);
 
-	*out_folios = 0;
+	*out_pages = 0;
 	*total_out = 0;
 	*total_in = 0;
 
@@ -406,21 +406,19 @@ int zstd_compress_folios(struct list_head *ws, struct address_space *mapping,
 	}
 
 	/* map in the first page of input data */
-	ret = btrfs_compress_filemap_get_folio(mapping, start, &in_folio);
-	if (ret < 0)
-		goto out;
-	workspace->in_buf.src = kmap_local_folio(in_folio, 0);
+	in_page = find_get_page(mapping, start >> PAGE_SHIFT);
+	workspace->in_buf.src = kmap_local_page(in_page);
 	workspace->in_buf.pos = 0;
 	workspace->in_buf.size = min_t(size_t, len, PAGE_SIZE);
 
 	/* Allocate and map in the output buffer */
-	out_folio = btrfs_alloc_compr_folio();
-	if (out_folio == NULL) {
+	out_page = btrfs_alloc_compr_page();
+	if (out_page == NULL) {
 		ret = -ENOMEM;
 		goto out;
 	}
-	folios[nr_folios++] = out_folio;
-	workspace->out_buf.dst = folio_address(out_folio);
+	pages[nr_pages++] = out_page;
+	workspace->out_buf.dst = page_address(out_page);
 	workspace->out_buf.pos = 0;
 	workspace->out_buf.size = min_t(size_t, max_out, PAGE_SIZE);
 
@@ -455,17 +453,17 @@ int zstd_compress_folios(struct list_head *ws, struct address_space *mapping,
 		if (workspace->out_buf.pos == workspace->out_buf.size) {
 			tot_out += PAGE_SIZE;
 			max_out -= PAGE_SIZE;
-			if (nr_folios == nr_dest_folios) {
+			if (nr_pages == nr_dest_pages) {
 				ret = -E2BIG;
 				goto out;
 			}
-			out_folio = btrfs_alloc_compr_folio();
-			if (out_folio == NULL) {
+			out_page = btrfs_alloc_compr_page();
+			if (out_page == NULL) {
 				ret = -ENOMEM;
 				goto out;
 			}
-			folios[nr_folios++] = out_folio;
-			workspace->out_buf.dst = folio_address(out_folio);
+			pages[nr_pages++] = out_page;
+			workspace->out_buf.dst = page_address(out_page);
 			workspace->out_buf.pos = 0;
 			workspace->out_buf.size = min_t(size_t, max_out,
 							PAGE_SIZE);
@@ -481,14 +479,11 @@ int zstd_compress_folios(struct list_head *ws, struct address_space *mapping,
 		if (workspace->in_buf.pos == workspace->in_buf.size) {
 			tot_in += PAGE_SIZE;
 			kunmap_local(workspace->in_buf.src);
-			workspace->in_buf.src = NULL;
-			folio_put(in_folio);
+			put_page(in_page);
 			start += PAGE_SIZE;
 			len -= PAGE_SIZE;
-			ret = btrfs_compress_filemap_get_folio(mapping, start, &in_folio);
-			if (ret < 0)
-				goto out;
-			workspace->in_buf.src = kmap_local_folio(in_folio, 0);
+			in_page = find_get_page(mapping, start >> PAGE_SHIFT);
+			workspace->in_buf.src = kmap_local_page(in_page);
 			workspace->in_buf.pos = 0;
 			workspace->in_buf.size = min_t(size_t, len, PAGE_SIZE);
 		}
@@ -515,17 +510,17 @@ int zstd_compress_folios(struct list_head *ws, struct address_space *mapping,
 
 		tot_out += PAGE_SIZE;
 		max_out -= PAGE_SIZE;
-		if (nr_folios == nr_dest_folios) {
+		if (nr_pages == nr_dest_pages) {
 			ret = -E2BIG;
 			goto out;
 		}
-		out_folio = btrfs_alloc_compr_folio();
-		if (out_folio == NULL) {
+		out_page = btrfs_alloc_compr_page();
+		if (out_page == NULL) {
 			ret = -ENOMEM;
 			goto out;
 		}
-		folios[nr_folios++] = out_folio;
-		workspace->out_buf.dst = folio_address(out_folio);
+		pages[nr_pages++] = out_page;
+		workspace->out_buf.dst = page_address(out_page);
 		workspace->out_buf.pos = 0;
 		workspace->out_buf.size = min_t(size_t, max_out, PAGE_SIZE);
 	}
@@ -539,10 +534,10 @@ int zstd_compress_folios(struct list_head *ws, struct address_space *mapping,
 	*total_in = tot_in;
 	*total_out = tot_out;
 out:
-	*out_folios = nr_folios;
+	*out_pages = nr_pages;
 	if (workspace->in_buf.src) {
 		kunmap_local(workspace->in_buf.src);
-		folio_put(in_folio);
+		put_page(in_page);
 	}
 	return ret;
 }
@@ -550,12 +545,12 @@ out:
 int zstd_decompress_bio(struct list_head *ws, struct compressed_bio *cb)
 {
 	struct workspace *workspace = list_entry(ws, struct workspace, list);
-	struct folio **folios_in = cb->compressed_folios;
+	struct page **pages_in = cb->compressed_pages;
 	size_t srclen = cb->compressed_len;
 	zstd_dstream *stream;
 	int ret = 0;
-	unsigned long folio_in_index = 0;
-	unsigned long total_folios_in = DIV_ROUND_UP(srclen, PAGE_SIZE);
+	unsigned long page_in_index = 0;
+	unsigned long total_pages_in = DIV_ROUND_UP(srclen, PAGE_SIZE);
 	unsigned long buf_start;
 	unsigned long total_out = 0;
 
@@ -567,7 +562,7 @@ int zstd_decompress_bio(struct list_head *ws, struct compressed_bio *cb)
 		goto done;
 	}
 
-	workspace->in_buf.src = kmap_local_folio(folios_in[folio_in_index], 0);
+	workspace->in_buf.src = kmap_local_page(pages_in[page_in_index]);
 	workspace->in_buf.pos = 0;
 	workspace->in_buf.size = min_t(size_t, srclen, PAGE_SIZE);
 
@@ -604,15 +599,14 @@ int zstd_decompress_bio(struct list_head *ws, struct compressed_bio *cb)
 
 		if (workspace->in_buf.pos == workspace->in_buf.size) {
 			kunmap_local(workspace->in_buf.src);
-			folio_in_index++;
-			if (folio_in_index >= total_folios_in) {
+			page_in_index++;
+			if (page_in_index >= total_pages_in) {
 				workspace->in_buf.src = NULL;
 				ret = -EIO;
 				goto done;
 			}
 			srclen -= PAGE_SIZE;
-			workspace->in_buf.src =
-				kmap_local_folio(folios_in[folio_in_index], 0);
+			workspace->in_buf.src = kmap_local_page(pages_in[page_in_index]);
 			workspace->in_buf.pos = 0;
 			workspace->in_buf.size = min_t(size_t, srclen, PAGE_SIZE);
 		}

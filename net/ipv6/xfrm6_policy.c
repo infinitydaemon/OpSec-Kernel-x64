@@ -184,6 +184,7 @@ static struct ctl_table xfrm6_policy_table[] = {
 		.mode		= 0644,
 		.proc_handler   = proc_dointvec,
 	},
+	{ }
 };
 
 static int __net_init xfrm6_net_sysctl_init(struct net *net)
@@ -217,7 +218,7 @@ err_alloc:
 
 static void __net_exit xfrm6_net_sysctl_exit(struct net *net)
 {
-	const struct ctl_table *table;
+	struct ctl_table *table;
 
 	if (!net->ipv6.sysctl.xfrm6_hdr)
 		return;

@@ -231,8 +231,11 @@ static void guc_ggtt_ct_invalidate(struct intel_gt *gt)
 	struct intel_uncore *uncore = gt->uncore;
 	intel_wakeref_t wakeref;
 
-	with_intel_runtime_pm_if_active(uncore->rpm, wakeref)
-		intel_guc_invalidate_tlb_guc(gt_to_guc(gt));
+	with_intel_runtime_pm_if_active(uncore->rpm, wakeref) {
+		struct intel_guc *guc = &gt->uc.guc;
+
+		intel_guc_invalidate_tlb_guc(guc);
+	}
 }
 
 static void guc_ggtt_invalidate(struct i915_ggtt *ggtt)
@@ -243,7 +246,7 @@ static void guc_ggtt_invalidate(struct i915_ggtt *ggtt)
 	gen8_ggtt_invalidate(ggtt);
 
 	list_for_each_entry(gt, &ggtt->gt_list, ggtt_link) {
-		if (intel_guc_tlb_invalidation_is_available(gt_to_guc(gt)))
+		if (intel_guc_tlb_invalidation_is_available(&gt->uc.guc))
 			guc_ggtt_ct_invalidate(gt);
 		else if (GRAPHICS_VER(i915) >= 12)
 			intel_uncore_write_fw(gt->uncore,

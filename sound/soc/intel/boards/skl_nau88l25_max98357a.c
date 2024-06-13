@@ -3,7 +3,7 @@
  * Intel Skylake I2S Machine Driver with MAXIM98357A
  * and NAU88L25
  *
- * Copyright (C) 2015, Intel Corporation
+ * Copyright (C) 2015, Intel Corporation. All rights reserved.
  */
 
 #include <linux/module.h>

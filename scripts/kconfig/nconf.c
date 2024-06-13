@@ -826,18 +826,26 @@ static void build_conf(struct menu *menu)
 
 		val = sym_get_tristate_value(sym);
 		if (sym_is_changeable(sym)) {
-			switch (val) {
-			case yes:
-				ch = '*';
+			switch (type) {
+			case S_BOOLEAN:
+				item_make(menu, 't', "[%c]",
+						val == no ? ' ' : '*');
 				break;
-			case mod:
-				ch = 'M';
-				break;
-			default:
-				ch = ' ';
+			case S_TRISTATE:
+				switch (val) {
+				case yes:
+					ch = '*';
+					break;
+				case mod:
+					ch = 'M';
+					break;
+				default:
+					ch = ' ';
+					break;
+				}
+				item_make(menu, 't', "<%c>", ch);
 				break;
 			}
-			item_make(menu, 't', "<%c>", ch);
 		} else {
 			item_make(menu, def_menu ? 't' : ':', "   ");
 		}
@@ -845,8 +853,16 @@ static void build_conf(struct menu *menu)
 		item_add_str("%*c%s", indent + 1,
 				' ', menu_get_prompt(menu));
 		if (val == yes) {
-			if (def_menu)
-				item_add_str(" (%s)  --->", menu_get_prompt(def_menu));
+			if (def_menu) {
+				item_add_str(" (%s)",
+					menu_get_prompt(def_menu));
+				item_add_str("  --->");
+				if (def_menu->list) {
+					indent += 2;
+					build_conf(def_menu);
+					indent -= 2;
+				}
+			}
 			return;
 		}
 	} else {
@@ -858,46 +874,54 @@ static void build_conf(struct menu *menu)
 		}
 		child_count++;
 		val = sym_get_tristate_value(sym);
-		switch (type) {
-		case S_BOOLEAN:
-			if (sym_is_changeable(sym))
-				item_make(menu, 't', "[%c]",
-					  val == no ? ' ' : '*');
-			else
-				item_make(menu, 't', "-%c-",
-					  val == no ? ' ' : '*');
-			break;
-		case S_TRISTATE:
-			switch (val) {
-			case yes:
-				ch = '*';
+		if (sym_is_choice_value(sym) && val == yes) {
+			item_make(menu, ':', "   ");
+		} else {
+			switch (type) {
+			case S_BOOLEAN:
+				if (sym_is_changeable(sym))
+					item_make(menu, 't', "[%c]",
+						val == no ? ' ' : '*');
+				else
+					item_make(menu, 't', "-%c-",
+						val == no ? ' ' : '*');
 				break;
-			case mod:
-				ch = 'M';
+			case S_TRISTATE:
+				switch (val) {
+				case yes:
+					ch = '*';
+					break;
+				case mod:
+					ch = 'M';
+					break;
+				default:
+					ch = ' ';
+					break;
+				}
+				if (sym_is_changeable(sym)) {
+					if (sym->rev_dep.tri == mod)
+						item_make(menu,
+							't', "{%c}", ch);
+					else
+						item_make(menu,
+							't', "<%c>", ch);
+				} else
+					item_make(menu, 't', "-%c-", ch);
 				break;
 			default:
-				ch = ' ';
-				break;
+				tmp = 2 + strlen(sym_get_string_value(sym));
+				item_make(menu, 's', "    (%s)",
+						sym_get_string_value(sym));
+				tmp = indent - tmp + 4;
+				if (tmp < 0)
+					tmp = 0;
+				item_add_str("%*c%s%s", tmp, ' ',
+						menu_get_prompt(menu),
+						(sym_has_value(sym) ||
+						 !sym_is_changeable(sym)) ? "" :
+						" (NEW)");
+				goto conf_childs;
 			}
-			if (sym_is_changeable(sym)) {
-				if (sym->rev_dep.tri == mod)
-					item_make(menu, 't', "{%c}", ch);
-				else
-					item_make(menu, 't', "<%c>", ch);
-			} else
-				item_make(menu, 't', "-%c-", ch);
-			break;
-		default:
-			tmp = 2 + strlen(sym_get_string_value(sym));
-			item_make(menu, 's', "    (%s)",
-				  sym_get_string_value(sym));
-			tmp = indent - tmp + 4;
-			if (tmp < 0)
-				tmp = 0;
-			item_add_str("%*c%s%s", tmp, ' ', menu_get_prompt(menu),
-				     (sym_has_value(sym) ||
-				      !sym_is_changeable(sym)) ? "" : " (NEW)");
-			goto conf_childs;
 		}
 		item_add_str("%*c%s%s", indent + 1, ' ',
 				menu_get_prompt(menu),

@@ -965,6 +965,7 @@ const struct address_space_operations ext2_aops = {
 	.write_begin		= ext2_write_begin,
 	.write_end		= ext2_write_end,
 	.bmap			= ext2_bmap,
+	.direct_IO		= noop_direct_IO,
 	.writepages		= ext2_writepages,
 	.migrate_folio		= buffer_migrate_folio,
 	.is_partially_uptodate	= block_is_partially_uptodate,
@@ -973,6 +974,7 @@ const struct address_space_operations ext2_aops = {
 
 static const struct address_space_operations ext2_dax_aops = {
 	.writepages		= ext2_dax_writepages,
+	.direct_IO		= noop_direct_IO,
 	.dirty_folio		= noop_dirty_folio,
 };
 

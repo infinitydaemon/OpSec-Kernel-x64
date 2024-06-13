@@ -11,6 +11,7 @@
 #include <linux/bits.h>
 
 enum icl_port_dpll_id;
+enum phy;
 struct drm_i915_private;
 struct intel_atomic_state;
 struct intel_c10pll_state;
@@ -21,7 +22,7 @@ struct intel_crtc_state;
 struct intel_encoder;
 struct intel_hdmi;
 
-bool intel_encoder_is_c10phy(struct intel_encoder *encoder);
+bool intel_is_c10phy(struct drm_i915_private *dev_priv, enum phy phy);
 void intel_mtl_pll_enable(struct intel_encoder *encoder,
 			  const struct intel_crtc_state *crtc_state);
 void intel_mtl_pll_disable(struct intel_encoder *encoder);

@@ -42,10 +42,7 @@ static int debugfs_trace_show(struct seq_file *f, void *offset)
 
 static int vchiq_dump_show(struct seq_file *f, void *offset)
 {
-	struct vchiq_instance *instance = f->private;
-
-	vchiq_dump_state(f, instance->state);
-
+	vchiq_dump_state(f, &g_state);
 	return 0;
 }
 DEFINE_SHOW_ATTRIBUTE(vchiq_dump);

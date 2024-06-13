@@ -25,7 +25,6 @@
 #include "xfs_error.h"
 #include "xfs_ioctl.h"
 #include "xfs_xattr.h"
-#include "xfs_file.h"
 
 #include <linux/posix_acl.h>
 #include <linux/security.h>
@@ -63,7 +62,7 @@ xfs_initxattrs(
 			.value		= xattr->value,
 			.valuelen	= xattr->value_len,
 		};
-		error = xfs_attr_change(&args, XFS_ATTRUPDATE_UPSERT);
+		error = xfs_attr_change(&args);
 		if (error < 0)
 			break;
 	}
@@ -157,8 +156,6 @@ xfs_create_need_xattr(
 	if (dir->i_sb->s_security)
 		return true;
 #endif
-	if (xfs_has_parent(XFS_I(dir)->i_mount))
-		return true;
 	return false;
 }
 
@@ -203,18 +200,7 @@ xfs_generic_create(
 				xfs_create_need_xattr(dir, default_acl, acl),
 				&ip);
 	} else {
-		bool	init_xattrs = false;
-
-		/*
-		 * If this temporary file will be linkable, set up the file
-		 * with an attr fork to receive a parent pointer.
-		 */
-		if (!(tmpfile->f_flags & O_EXCL) &&
-		    xfs_has_parent(XFS_I(dir)->i_mount))
-			init_xattrs = true;
-
-		error = xfs_create_tmpfile(idmap, XFS_I(dir), mode,
-				init_xattrs, &ip);
+		error = xfs_create_tmpfile(idmap, XFS_I(dir), mode, &ip);
 	}
 	if (unlikely(error))
 		goto out_free_acl;
@@ -378,9 +364,6 @@ xfs_vn_link(
 	if (unlikely(error))
 		return error;
 
-	if (IS_PRIVATE(inode))
-		return -EPERM;
-
 	error = xfs_link(XFS_I(dir), XFS_I(inode), &name);
 	if (unlikely(error))
 		return error;
@@ -538,7 +521,7 @@ xfs_stat_blksize(
 	 * always return the realtime extent size.
 	 */
 	if (XFS_IS_REALTIME_INODE(ip))
-		return XFS_FSB_TO_B(mp, xfs_get_extsz_hint(ip) ? : 1);
+		return XFS_FSB_TO_B(mp, xfs_get_extsz_hint(ip));
 
 	/*
 	 * Allow large block sizes to be reported to userspace programs if the

@@ -27,6 +27,7 @@
 #define __DAL_TYPES_H__
 
 #include "signal_types.h"
+#include "dc_types.h"
 
 struct dal_logger;
 struct dc_bios;

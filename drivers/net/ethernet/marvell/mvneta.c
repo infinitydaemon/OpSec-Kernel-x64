@@ -3259,8 +3259,7 @@ static void mvneta_link_change(struct mvneta_port *pp)
 {
 	u32 gmac_stat = mvreg_read(pp, MVNETA_GMAC_STATUS);
 
-	phylink_pcs_change(&pp->phylink_pcs,
-			   !!(gmac_stat & MVNETA_GMAC_LINK_UP));
+	phylink_mac_change(pp->phylink, !!(gmac_stat & MVNETA_GMAC_LINK_UP));
 }
 
 /* NAPI handler
@@ -3861,7 +3860,7 @@ static int mvneta_change_mtu(struct net_device *dev, int mtu)
 		return -EINVAL;
 	}
 
-	WRITE_ONCE(dev->mtu, mtu);
+	dev->mtu = mtu;
 
 	if (!netif_running(dev)) {
 		if (pp->bm_priv)

@@ -622,58 +622,40 @@ void amdgpu_vm_pt_free_work(struct work_struct *work)
 }
 
 /**
- * amdgpu_vm_pt_free_list - free PD/PT levels
+ * amdgpu_vm_pt_free_dfs - free PD/PT levels
  *
  * @adev: amdgpu device structure
- * @params: see amdgpu_vm_update_params definition
+ * @vm: amdgpu vm structure
+ * @start: optional cursor where to start freeing PDs/PTs
+ * @unlocked: vm resv unlock status
  *
- * Free the page directory objects saved in the flush list
+ * Free the page directory or page table level and all sub levels.
  */
-void amdgpu_vm_pt_free_list(struct amdgpu_device *adev,
-			    struct amdgpu_vm_update_params *params)
+static void amdgpu_vm_pt_free_dfs(struct amdgpu_device *adev,
+				  struct amdgpu_vm *vm,
+				  struct amdgpu_vm_pt_cursor *start,
+				  bool unlocked)
 {
-	struct amdgpu_vm_bo_base *entry, *next;
-	struct amdgpu_vm *vm = params->vm;
-	bool unlocked = params->unlocked;
-
-	if (list_empty(&params->tlb_flush_waitlist))
-		return;
+	struct amdgpu_vm_pt_cursor cursor;
+	struct amdgpu_vm_bo_base *entry;
 
 	if (unlocked) {
 		spin_lock(&vm->status_lock);
-		list_splice_init(&params->tlb_flush_waitlist, &vm->pt_freed);
+		for_each_amdgpu_vm_pt_dfs_safe(adev, vm, start, cursor, entry)
+			list_move(&entry->vm_status, &vm->pt_freed);
+
+		if (start)
+			list_move(&start->entry->vm_status, &vm->pt_freed);
 		spin_unlock(&vm->status_lock);
 		schedule_work(&vm->pt_free_work);
 		return;
 	}
 
-	list_for_each_entry_safe(entry, next, &params->tlb_flush_waitlist, vm_status)
+	for_each_amdgpu_vm_pt_dfs_safe(adev, vm, start, cursor, entry)
 		amdgpu_vm_pt_free(entry);
-}
 
-/**
- * amdgpu_vm_pt_add_list - add PD/PT level to the flush list
- *
- * @params: parameters for the update
- * @cursor: first PT entry to start DF search from, non NULL
- *
- * This list will be freed after TLB flush.
- */
-static void amdgpu_vm_pt_add_list(struct amdgpu_vm_update_params *params,
-				  struct amdgpu_vm_pt_cursor *cursor)
-{
-	struct amdgpu_vm_pt_cursor seek;
-	struct amdgpu_vm_bo_base *entry;
-
-	spin_lock(&params->vm->status_lock);
-	for_each_amdgpu_vm_pt_dfs_safe(params->adev, params->vm, cursor, seek, entry) {
-		if (entry && entry->bo)
-			list_move(&entry->vm_status, &params->tlb_flush_waitlist);
-	}
-
-	/* enter start node now */
-	list_move(&cursor->entry->vm_status, &params->tlb_flush_waitlist);
-	spin_unlock(&params->vm->status_lock);
+	if (start)
+		amdgpu_vm_pt_free(start->entry);
 }
 
 /**
@@ -685,13 +667,7 @@ static void amdgpu_vm_pt_add_list(struct amdgpu_vm_update_params *params,
  */
 void amdgpu_vm_pt_free_root(struct amdgpu_device *adev, struct amdgpu_vm *vm)
 {
-	struct amdgpu_vm_pt_cursor cursor;
-	struct amdgpu_vm_bo_base *entry;
-
-	for_each_amdgpu_vm_pt_dfs_safe(adev, vm, NULL, cursor, entry) {
-		if (entry)
-			amdgpu_vm_pt_free(entry);
-	}
+	amdgpu_vm_pt_free_dfs(adev, vm, NULL, false);
 }
 
 /**
@@ -706,15 +682,11 @@ int amdgpu_vm_pde_update(struct amdgpu_vm_update_params *params,
 			 struct amdgpu_vm_bo_base *entry)
 {
 	struct amdgpu_vm_bo_base *parent = amdgpu_vm_pt_parent(entry);
-	struct amdgpu_bo *bo, *pbo;
+	struct amdgpu_bo *bo = parent->bo, *pbo;
 	struct amdgpu_vm *vm = params->vm;
 	uint64_t pde, pt, flags;
 	unsigned int level;
 
-	if (WARN_ON(!parent))
-		return -EINVAL;
-
-	bo = parent->bo;
 	for (level = 0, pbo = bo->parent; pbo; ++level)
 		pbo = pbo->parent;
 
@@ -1000,8 +972,10 @@ int amdgpu_vm_ptes_update(struct amdgpu_vm_update_params *params,
 			while (cursor.pfn < frag_start) {
 				/* Make sure previous mapping is freed */
 				if (cursor.entry->bo) {
-					params->needs_flush = true;
-					amdgpu_vm_pt_add_list(params, &cursor);
+					params->table_freed = true;
+					amdgpu_vm_pt_free_dfs(adev, params->vm,
+							      &cursor,
+							      params->unlocked);
 				}
 				amdgpu_vm_pt_next(adev, &cursor);
 			}

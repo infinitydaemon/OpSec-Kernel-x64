@@ -155,7 +155,6 @@ validate_chandef_by_6ghz_he_eht_oper(struct ieee80211_sub_if_data *sdata,
 		struct ieee80211_eht_operation _oper;
 		struct ieee80211_eht_operation_info _oper_info;
 	} __packed eht;
-	const struct ieee80211_eht_operation *eht_oper;
 
 	if (conn->mode < IEEE80211_CONN_MODE_HE) {
 		chandef->chan = NULL;
@@ -204,18 +203,19 @@ validate_chandef_by_6ghz_he_eht_oper(struct ieee80211_sub_if_data *sdata,
 	}
 
 	if (conn->mode < IEEE80211_CONN_MODE_EHT) {
-		eht_oper = NULL;
+		if (!ieee80211_chandef_he_6ghz_oper(local, &he._oper,
+						    NULL, chandef))
+			chandef->chan = NULL;
 	} else {
 		eht._oper.params = IEEE80211_EHT_OPER_INFO_PRESENT;
 		eht._oper_info.control = he._6ghz_oper.control;
 		eht._oper_info.ccfs0 = he._6ghz_oper.ccfs0;
 		eht._oper_info.ccfs1 = he._6ghz_oper.ccfs1;
-		eht_oper = &eht._oper;
-	}
 
-	if (!ieee80211_chandef_he_6ghz_oper(local, &he._oper,
-					    eht_oper, chandef))
-		chandef->chan = NULL;
+		if (!ieee80211_chandef_he_6ghz_oper(local, &he._oper,
+						    &eht._oper, chandef))
+			chandef->chan = NULL;
+	}
 }
 
 int ieee80211_parse_ch_switch_ie(struct ieee80211_sub_if_data *sdata,
@@ -348,10 +348,6 @@ int ieee80211_parse_ch_switch_ie(struct ieee80211_sub_if_data *sdata,
 		new_chandef = csa_ie->chanreq.oper;
 		/* and update the width accordingly */
 		ieee80211_chandef_eht_oper(&bwi->info, &new_chandef);
-
-		if (bwi->params & IEEE80211_BW_IND_DIS_SUBCH_PRESENT)
-			new_chandef.punctured =
-				get_unaligned_le16(bwi->info.optional);
 	} else if (!wide_bw_chansw_ie || !wbcs_elem_to_chandef(wide_bw_chansw_ie,
 							       &new_chandef)) {
 		if (!ieee80211_operating_class_to_chandef(new_op_class, new_chan,

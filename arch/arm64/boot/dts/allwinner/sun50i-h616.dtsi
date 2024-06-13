@@ -26,7 +26,6 @@
 			reg = <0>;
 			enable-method = "psci";
 			clocks = <&ccu CLK_CPUX>;
-			#cooling-cells = <2>;
 		};
 
 		cpu1: cpu@1 {
@@ -35,7 +34,6 @@
 			reg = <1>;
 			enable-method = "psci";
 			clocks = <&ccu CLK_CPUX>;
-			#cooling-cells = <2>;
 		};
 
 		cpu2: cpu@2 {
@@ -44,7 +42,6 @@
 			reg = <2>;
 			enable-method = "psci";
 			clocks = <&ccu CLK_CPUX>;
-			#cooling-cells = <2>;
 		};
 
 		cpu3: cpu@3 {
@@ -53,7 +50,6 @@
 			reg = <3>;
 			enable-method = "psci";
 			clocks = <&ccu CLK_CPUX>;
-			#cooling-cells = <2>;
 		};
 	};
 
@@ -160,10 +156,6 @@
 			ths_calibration: thermal-sensor-calibration@14 {
 				reg = <0x14 0x8>;
 			};
-
-			cpu_speed_grade: cpu-speed-grade@0 {
-				reg = <0x0 2>;
-			};
 		};
 
 		watchdog: watchdog@30090a0 {
@@ -202,7 +194,7 @@
 			};
 
 			i2c0_pins: i2c0-pins {
-				pins = "PI5", "PI6";
+				pins = "PI6", "PI7";
 				function = "i2c0";
 			};
 
@@ -781,15 +773,6 @@
 			clock-names = "hosc", "losc", "iosc", "pll-periph";
 			#clock-cells = <1>;
 			#reset-cells = <1>;
-		};
-
-		nmi_intc: interrupt-controller@7010320 {
-			compatible = "allwinner,sun50i-h616-nmi",
-				     "allwinner,sun9i-a80-nmi";
-			reg = <0x07010320 0xc>;
-			interrupt-controller;
-			#interrupt-cells = <2>;
-			interrupts = <GIC_SPI 103 IRQ_TYPE_LEVEL_HIGH>;
 		};
 
 		r_pio: pinctrl@7022000 {

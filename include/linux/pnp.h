@@ -435,6 +435,8 @@ struct pnp_protocol {
 #define protocol_for_each_dev(protocol, dev)	\
 	list_for_each_entry(dev, &(protocol)->devices, protocol_list)
 
+extern const struct bus_type pnp_bus_type;
+
 #if defined(CONFIG_PNP)
 
 /* device management */
@@ -467,8 +469,6 @@ int compare_pnp_id(struct pnp_id *pos, const char *id);
 int pnp_register_driver(struct pnp_driver *drv);
 void pnp_unregister_driver(struct pnp_driver *drv);
 
-bool dev_is_pnp(const struct device *dev);
-
 #else
 
 /* device management */
@@ -499,8 +499,6 @@ static inline int pnp_is_active(struct pnp_dev *dev) { return 0; }
 static inline int compare_pnp_id(struct pnp_id *pos, const char *id) { return -ENODEV; }
 static inline int pnp_register_driver(struct pnp_driver *drv) { return -ENODEV; }
 static inline void pnp_unregister_driver(struct pnp_driver *drv) { }
-
-static inline bool dev_is_pnp(const struct device *dev) { return false; }
 
 #endif /* CONFIG_PNP */
 

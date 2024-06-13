@@ -14,7 +14,6 @@
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/types.h>
-#include <linux/vmalloc.h>
 
 /**
  * pvr_vm_mips_init() - Initialise MIPS FW pagetable

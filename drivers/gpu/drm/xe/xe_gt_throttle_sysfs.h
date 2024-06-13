@@ -10,7 +10,7 @@
 
 struct xe_gt;
 
-int xe_gt_throttle_sysfs_init(struct xe_gt *gt);
+void xe_gt_throttle_sysfs_init(struct xe_gt *gt);
 
 #endif /* _XE_GT_THROTTLE_SYSFS_H_ */
 

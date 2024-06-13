@@ -236,7 +236,6 @@ int rtl83xx_register_switch(struct realtek_priv *priv)
 	ds->priv = priv;
 	ds->dev = priv->dev;
 	ds->ops = priv->variant->ds_ops;
-	ds->phylink_mac_ops = priv->variant->phylink_mac_ops;
 	ds->num_ports = priv->num_ports;
 
 	ret = dsa_register_switch(ds);
@@ -291,13 +290,16 @@ EXPORT_SYMBOL_NS_GPL(rtl83xx_shutdown, REALTEK_DSA);
  * rtl83xx_remove() - Cleanup a realtek switch driver
  * @priv: realtek_priv pointer
  *
- * Placehold for common cleanup procedures.
+ * If a method is provided, this function asserts the hard reset of the switch
+ * in order to avoid leaking traffic when the driver is gone.
  *
- * Context: Any
+ * Context: Might sleep if priv->gdev->chip->can_sleep.
  * Return: nothing
  */
 void rtl83xx_remove(struct realtek_priv *priv)
 {
+	/* leave the device reset asserted */
+	rtl83xx_reset_assert(priv);
 }
 EXPORT_SYMBOL_NS_GPL(rtl83xx_remove, REALTEK_DSA);
 

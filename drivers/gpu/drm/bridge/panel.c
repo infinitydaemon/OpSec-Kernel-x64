@@ -4,8 +4,6 @@
  * Copyright (C) 2017 Broadcom
  */
 
-#include <linux/debugfs.h>
-
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_connector.h>

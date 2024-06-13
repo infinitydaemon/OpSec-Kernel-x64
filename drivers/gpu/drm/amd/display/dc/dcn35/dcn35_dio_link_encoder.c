@@ -80,6 +80,7 @@ enum signal_type dcn35_get_dig_mode(
 	default:
 		return SIGNAL_TYPE_NONE;
 	}
+	return SIGNAL_TYPE_NONE;
 }
 
 void dcn35_link_encoder_setup(
@@ -118,7 +119,7 @@ void dcn35_link_encoder_setup(
 
 void dcn35_link_encoder_init(struct link_encoder *enc)
 {
-	enc31_hw_init(enc);
+	enc32_hw_init(enc);
 	dcn35_link_encoder_set_fgcg(enc, enc->ctx->dc->debug.enable_fine_grain_clock_gating.bits.dio);
 }
 

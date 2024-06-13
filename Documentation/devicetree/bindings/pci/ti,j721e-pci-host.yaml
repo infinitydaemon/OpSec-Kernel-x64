@@ -23,10 +23,6 @@ properties:
         items:
           - const: ti,j7200-pcie-host
           - const: ti,j721e-pcie-host
-      - description: PCIe controller in J722S
-        items:
-          - const: ti,j722s-pcie-host
-          - const: ti,j721e-pcie-host
 
   reg:
     maxItems: 4
@@ -72,7 +68,6 @@ properties:
       - 0xb00d
       - 0xb00f
       - 0xb010
-      - 0xb012
       - 0xb013
 
   msi-map: true

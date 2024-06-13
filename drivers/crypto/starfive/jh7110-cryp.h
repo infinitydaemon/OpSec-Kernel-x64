@@ -91,7 +91,6 @@ union starfive_hash_csr {
 #define STARFIVE_HASH_KEY_DONE			BIT(13)
 		u32 key_done			:1;
 		u32 key_flag			:1;
-#define STARFIVE_HASH_HMAC_DONE			BIT(15)
 		u32 hmac_done			:1;
 #define STARFIVE_HASH_BUSY			BIT(16)
 		u32 busy			:1;
@@ -169,7 +168,6 @@ struct starfive_cryp_ctx {
 	struct crypto_akcipher			*akcipher_fbk;
 	struct crypto_ahash			*ahash_fbk;
 	struct crypto_aead			*aead_fbk;
-	struct crypto_skcipher			*skcipher_fbk;
 };
 
 struct starfive_cryp_dev {
@@ -187,8 +185,11 @@ struct starfive_cryp_dev {
 	struct dma_chan				*rx;
 	struct dma_slave_config			cfg_in;
 	struct dma_slave_config			cfg_out;
+	struct scatter_walk			in_walk;
+	struct scatter_walk			out_walk;
 	struct crypto_engine			*engine;
-	struct completion			dma_done;
+	struct tasklet_struct			aes_done;
+	struct tasklet_struct			hash_done;
 	size_t					assoclen;
 	size_t					total_in;
 	size_t					total_out;
@@ -235,4 +236,7 @@ void starfive_rsa_unregister_algs(void);
 
 int starfive_aes_register_algs(void);
 void starfive_aes_unregister_algs(void);
+
+void starfive_hash_done_task(unsigned long param);
+void starfive_aes_done_task(unsigned long param);
 #endif

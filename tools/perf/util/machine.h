@@ -49,7 +49,7 @@ struct machine {
 	struct {
 		u64	  text_start;
 		u64	  text_end;
-	} sched, lock, traceiter, trace;
+	} sched, lock;
 	pid_t		  *current_tid;
 	size_t		  current_tid_sz;
 	union { /* Tool specific area */
@@ -305,7 +305,5 @@ int machine__map_x86_64_entry_trampolines(struct machine *machine,
 
 int machine__resolve(struct machine *machine, struct addr_location *al,
 		     struct perf_sample *sample);
-
-int machine__hit_all_dsos(struct machine *machine);
 
 #endif /* __PERF_MACHINE_H */

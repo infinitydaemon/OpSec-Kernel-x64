@@ -1072,11 +1072,12 @@ static inline u64 efivar_reserved_space(void) { return 0; }
 #endif
 
 /*
- * There is no actual upper limit specified for the variable name size.
- *
- * This limit exists only for practical purposes, since name conversions
- * are bounds-checked and name data is occasionally stored in-line.
+ * The maximum size of VariableName + Data = 1024
+ * Therefore, it's reasonable to save that much
+ * space in each part of the structure,
+ * and we use a page for reading/writing.
  */
+
 #define EFI_VAR_NAME_LEN	1024
 
 int efivars_register(struct efivars *efivars,

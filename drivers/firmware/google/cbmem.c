@@ -124,6 +124,7 @@ static struct coreboot_driver cbmem_entry_driver = {
 	.probe = cbmem_entry_probe,
 	.drv = {
 		.name = "cbmem",
+		.owner = THIS_MODULE,
 		.dev_groups = dev_groups,
 	},
 	.id_table = cbmem_ids,

@@ -42,7 +42,6 @@
 #include <linux/sched/mm.h>
 #include <asm/tlbflush.h>
 #include <asm/shmparam.h>
-#include <linux/page_owner.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmalloc.h>
@@ -97,7 +96,6 @@ static int vmap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 {
 	pte_t *pte;
 	u64 pfn;
-	struct page *page;
 	unsigned long size = PAGE_SIZE;
 
 	pfn = phys_addr >> PAGE_SHIFT;
@@ -105,13 +103,7 @@ static int vmap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 	if (!pte)
 		return -ENOMEM;
 	do {
-		if (!pte_none(ptep_get(pte))) {
-			if (pfn_valid(pfn)) {
-				page = pfn_to_page(pfn);
-				dump_page(page, "remapping already mapped page");
-			}
-			BUG();
-		}
+		BUG_ON(!pte_none(ptep_get(pte)));
 
 #ifdef CONFIG_HUGETLB_PAGE
 		size = arch_vmap_pte_range_map_size(addr, end, pfn, max_page_shift);
@@ -722,7 +714,7 @@ int is_vmalloc_or_module_addr(const void *x)
 	 * and fall back on vmalloc() if that fails. Others
 	 * just put it in the vmalloc space.
 	 */
-#if defined(CONFIG_EXECMEM) && defined(MODULES_VADDR)
+#if defined(CONFIG_MODULES) && defined(MODULES_VADDR)
 	unsigned long addr = (unsigned long)kasan_reset_tag(x);
 	if (addr >= MODULES_VADDR && addr < MODULES_END)
 		return 1;
@@ -1934,25 +1926,15 @@ node_alloc(unsigned long size, unsigned long align,
 	return va;
 }
 
-static inline void setup_vmalloc_vm(struct vm_struct *vm,
-	struct vmap_area *va, unsigned long flags, const void *caller)
-{
-	vm->flags = flags;
-	vm->addr = (void *)va->va_start;
-	vm->size = va->va_end - va->va_start;
-	vm->caller = caller;
-	va->vm = vm;
-}
-
 /*
  * Allocate a region of KVA of the specified size and alignment, within the
- * vstart and vend. If vm is passed in, the two will also be bound.
+ * vstart and vend.
  */
 static struct vmap_area *alloc_vmap_area(unsigned long size,
 				unsigned long align,
 				unsigned long vstart, unsigned long vend,
 				int node, gfp_t gfp_mask,
-				unsigned long va_flags, struct vm_struct *vm)
+				unsigned long va_flags)
 {
 	struct vmap_node *vn;
 	struct vmap_area *va;
@@ -2014,12 +1996,6 @@ retry:
 	va->va_end = addr + size;
 	va->vm = NULL;
 	va->flags = (va_flags | vn_id);
-
-	if (vm) {
-		vm->addr = (void *)va->va_start;
-		vm->size = va->va_end - va->va_start;
-		va->vm = vm;
-	}
 
 	vn = addr_to_node(va->va_start);
 
@@ -2598,7 +2574,7 @@ static void *new_vmap_block(unsigned int order, gfp_t gfp_mask)
 	va = alloc_vmap_area(VMAP_BLOCK_SIZE, VMAP_BLOCK_SIZE,
 					VMALLOC_START, VMALLOC_END,
 					node, gfp_mask,
-					VMAP_RAM|VMAP_BLOCK, NULL);
+					VMAP_RAM|VMAP_BLOCK);
 	if (IS_ERR(va)) {
 		kfree(vb);
 		return ERR_CAST(va);
@@ -2955,8 +2931,7 @@ void *vm_map_ram(struct page **pages, unsigned int count, int node)
 		struct vmap_area *va;
 		va = alloc_vmap_area(size, PAGE_SIZE,
 				VMALLOC_START, VMALLOC_END,
-				node, GFP_KERNEL, VMAP_RAM,
-				NULL);
+				node, GFP_KERNEL, VMAP_RAM);
 		if (IS_ERR(va))
 			return NULL;
 
@@ -3059,6 +3034,26 @@ void __init vm_area_register_early(struct vm_struct *vm, size_t align)
 	kasan_populate_early_vm_area_shadow(vm->addr, vm->size);
 }
 
+static inline void setup_vmalloc_vm_locked(struct vm_struct *vm,
+	struct vmap_area *va, unsigned long flags, const void *caller)
+{
+	vm->flags = flags;
+	vm->addr = (void *)va->va_start;
+	vm->size = va->va_end - va->va_start;
+	vm->caller = caller;
+	va->vm = vm;
+}
+
+static void setup_vmalloc_vm(struct vm_struct *vm, struct vmap_area *va,
+			      unsigned long flags, const void *caller)
+{
+	struct vmap_node *vn = addr_to_node(va->va_start);
+
+	spin_lock(&vn->busy.lock);
+	setup_vmalloc_vm_locked(vm, va, flags, caller);
+	spin_unlock(&vn->busy.lock);
+}
+
 static void clear_vm_uninitialized_flag(struct vm_struct *vm)
 {
 	/*
@@ -3095,14 +3090,13 @@ static struct vm_struct *__get_vm_area_node(unsigned long size,
 	if (!(flags & VM_NO_GUARD))
 		size += PAGE_SIZE;
 
-	area->flags = flags;
-	area->caller = caller;
-
-	va = alloc_vmap_area(size, align, start, end, node, gfp_mask, 0, area);
+	va = alloc_vmap_area(size, align, start, end, node, gfp_mask, 0);
 	if (IS_ERR(va)) {
 		kfree(area);
 		return NULL;
 	}
+
+	setup_vmalloc_vm(area, va, flags, caller);
 
 	/*
 	 * Mark pages for non-VM_ALLOC mappings as accessible. Do it now as a
@@ -3498,7 +3492,7 @@ vm_area_alloc_pages(gfp_t gfp, int nid,
 {
 	unsigned int nr_allocated = 0;
 	gfp_t alloc_gfp = gfp;
-	bool nofail = gfp & __GFP_NOFAIL;
+	bool nofail = false;
 	struct page *page;
 	int i;
 
@@ -3529,12 +3523,12 @@ vm_area_alloc_pages(gfp_t gfp, int nid,
 			 * but mempolicy wants to alloc memory by interleaving.
 			 */
 			if (IS_ENABLED(CONFIG_NUMA) && nid == NUMA_NO_NODE)
-				nr = alloc_pages_bulk_array_mempolicy_noprof(bulk_gfp,
+				nr = alloc_pages_bulk_array_mempolicy(bulk_gfp,
 							nr_pages_request,
 							pages + nr_allocated);
 
 			else
-				nr = alloc_pages_bulk_array_node_noprof(bulk_gfp, nid,
+				nr = alloc_pages_bulk_array_node(bulk_gfp, nid,
 							nr_pages_request,
 							pages + nr_allocated);
 
@@ -3555,17 +3549,18 @@ vm_area_alloc_pages(gfp_t gfp, int nid,
 		 * and compaction etc.
 		 */
 		alloc_gfp &= ~__GFP_NOFAIL;
+		nofail = true;
 	}
 
 	/* High-order pages or fallback path if "bulk" fails. */
 	while (nr_allocated < nr_pages) {
-		if (!nofail && fatal_signal_pending(current))
+		if (fatal_signal_pending(current))
 			break;
 
 		if (nid == NUMA_NO_NODE)
-			page = alloc_pages_noprof(alloc_gfp, order);
+			page = alloc_pages(alloc_gfp, order);
 		else
-			page = alloc_pages_node_noprof(nid, alloc_gfp, order);
+			page = alloc_pages_node(nid, alloc_gfp, order);
 		if (unlikely(!page)) {
 			if (!nofail)
 				break;
@@ -3622,10 +3617,10 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 
 	/* Please note that the recursion is strictly bounded. */
 	if (array_size > PAGE_SIZE) {
-		area->pages = __vmalloc_node_noprof(array_size, 1, nested_gfp, node,
+		area->pages = __vmalloc_node(array_size, 1, nested_gfp, node,
 					area->caller);
 	} else {
-		area->pages = kmalloc_node_noprof(array_size, nested_gfp, node);
+		area->pages = kmalloc_node(array_size, nested_gfp, node);
 	}
 
 	if (!area->pages) {
@@ -3735,7 +3730,7 @@ fail:
  *
  * Return: the address of the area or %NULL on failure
  */
-void *__vmalloc_node_range_noprof(unsigned long size, unsigned long align,
+void *__vmalloc_node_range(unsigned long size, unsigned long align,
 			unsigned long start, unsigned long end, gfp_t gfp_mask,
 			pgprot_t prot, unsigned long vm_flags, int node,
 			const void *caller)
@@ -3882,10 +3877,10 @@ fail:
  *
  * Return: pointer to the allocated memory or %NULL on error
  */
-void *__vmalloc_node_noprof(unsigned long size, unsigned long align,
+void *__vmalloc_node(unsigned long size, unsigned long align,
 			    gfp_t gfp_mask, int node, const void *caller)
 {
-	return __vmalloc_node_range_noprof(size, align, VMALLOC_START, VMALLOC_END,
+	return __vmalloc_node_range(size, align, VMALLOC_START, VMALLOC_END,
 				gfp_mask, PAGE_KERNEL, 0, node, caller);
 }
 /*
@@ -3894,15 +3889,15 @@ void *__vmalloc_node_noprof(unsigned long size, unsigned long align,
  * than that.
  */
 #ifdef CONFIG_TEST_VMALLOC_MODULE
-EXPORT_SYMBOL_GPL(__vmalloc_node_noprof);
+EXPORT_SYMBOL_GPL(__vmalloc_node);
 #endif
 
-void *__vmalloc_noprof(unsigned long size, gfp_t gfp_mask)
+void *__vmalloc(unsigned long size, gfp_t gfp_mask)
 {
-	return __vmalloc_node_noprof(size, 1, gfp_mask, NUMA_NO_NODE,
+	return __vmalloc_node(size, 1, gfp_mask, NUMA_NO_NODE,
 				__builtin_return_address(0));
 }
-EXPORT_SYMBOL(__vmalloc_noprof);
+EXPORT_SYMBOL(__vmalloc);
 
 /**
  * vmalloc - allocate virtually contiguous memory
@@ -3916,12 +3911,12 @@ EXPORT_SYMBOL(__vmalloc_noprof);
  *
  * Return: pointer to the allocated memory or %NULL on error
  */
-void *vmalloc_noprof(unsigned long size)
+void *vmalloc(unsigned long size)
 {
-	return __vmalloc_node_noprof(size, 1, GFP_KERNEL, NUMA_NO_NODE,
+	return __vmalloc_node(size, 1, GFP_KERNEL, NUMA_NO_NODE,
 				__builtin_return_address(0));
 }
-EXPORT_SYMBOL(vmalloc_noprof);
+EXPORT_SYMBOL(vmalloc);
 
 /**
  * vmalloc_huge - allocate virtually contiguous memory, allow huge pages
@@ -3935,13 +3930,13 @@ EXPORT_SYMBOL(vmalloc_noprof);
  *
  * Return: pointer to the allocated memory or %NULL on error
  */
-void *vmalloc_huge_noprof(unsigned long size, gfp_t gfp_mask)
+void *vmalloc_huge(unsigned long size, gfp_t gfp_mask)
 {
-	return __vmalloc_node_range_noprof(size, 1, VMALLOC_START, VMALLOC_END,
+	return __vmalloc_node_range(size, 1, VMALLOC_START, VMALLOC_END,
 				    gfp_mask, PAGE_KERNEL, VM_ALLOW_HUGE_VMAP,
 				    NUMA_NO_NODE, __builtin_return_address(0));
 }
-EXPORT_SYMBOL_GPL(vmalloc_huge_noprof);
+EXPORT_SYMBOL_GPL(vmalloc_huge);
 
 /**
  * vzalloc - allocate virtually contiguous memory with zero fill
@@ -3956,12 +3951,12 @@ EXPORT_SYMBOL_GPL(vmalloc_huge_noprof);
  *
  * Return: pointer to the allocated memory or %NULL on error
  */
-void *vzalloc_noprof(unsigned long size)
+void *vzalloc(unsigned long size)
 {
-	return __vmalloc_node_noprof(size, 1, GFP_KERNEL | __GFP_ZERO, NUMA_NO_NODE,
+	return __vmalloc_node(size, 1, GFP_KERNEL | __GFP_ZERO, NUMA_NO_NODE,
 				__builtin_return_address(0));
 }
-EXPORT_SYMBOL(vzalloc_noprof);
+EXPORT_SYMBOL(vzalloc);
 
 /**
  * vmalloc_user - allocate zeroed virtually contiguous memory for userspace
@@ -3972,14 +3967,14 @@ EXPORT_SYMBOL(vzalloc_noprof);
  *
  * Return: pointer to the allocated memory or %NULL on error
  */
-void *vmalloc_user_noprof(unsigned long size)
+void *vmalloc_user(unsigned long size)
 {
-	return __vmalloc_node_range_noprof(size, SHMLBA,  VMALLOC_START, VMALLOC_END,
+	return __vmalloc_node_range(size, SHMLBA,  VMALLOC_START, VMALLOC_END,
 				    GFP_KERNEL | __GFP_ZERO, PAGE_KERNEL,
 				    VM_USERMAP, NUMA_NO_NODE,
 				    __builtin_return_address(0));
 }
-EXPORT_SYMBOL(vmalloc_user_noprof);
+EXPORT_SYMBOL(vmalloc_user);
 
 /**
  * vmalloc_node - allocate memory on a specific node
@@ -3994,12 +3989,12 @@ EXPORT_SYMBOL(vmalloc_user_noprof);
  *
  * Return: pointer to the allocated memory or %NULL on error
  */
-void *vmalloc_node_noprof(unsigned long size, int node)
+void *vmalloc_node(unsigned long size, int node)
 {
-	return __vmalloc_node_noprof(size, 1, GFP_KERNEL, node,
+	return __vmalloc_node(size, 1, GFP_KERNEL, node,
 			__builtin_return_address(0));
 }
-EXPORT_SYMBOL(vmalloc_node_noprof);
+EXPORT_SYMBOL(vmalloc_node);
 
 /**
  * vzalloc_node - allocate memory on a specific node with zero fill
@@ -4012,12 +4007,12 @@ EXPORT_SYMBOL(vmalloc_node_noprof);
  *
  * Return: pointer to the allocated memory or %NULL on error
  */
-void *vzalloc_node_noprof(unsigned long size, int node)
+void *vzalloc_node(unsigned long size, int node)
 {
-	return __vmalloc_node_noprof(size, 1, GFP_KERNEL | __GFP_ZERO, node,
+	return __vmalloc_node(size, 1, GFP_KERNEL | __GFP_ZERO, node,
 				__builtin_return_address(0));
 }
-EXPORT_SYMBOL(vzalloc_node_noprof);
+EXPORT_SYMBOL(vzalloc_node);
 
 #if defined(CONFIG_64BIT) && defined(CONFIG_ZONE_DMA32)
 #define GFP_VMALLOC32 (GFP_DMA32 | GFP_KERNEL)
@@ -4040,12 +4035,12 @@ EXPORT_SYMBOL(vzalloc_node_noprof);
  *
  * Return: pointer to the allocated memory or %NULL on error
  */
-void *vmalloc_32_noprof(unsigned long size)
+void *vmalloc_32(unsigned long size)
 {
-	return __vmalloc_node_noprof(size, 1, GFP_VMALLOC32, NUMA_NO_NODE,
+	return __vmalloc_node(size, 1, GFP_VMALLOC32, NUMA_NO_NODE,
 			__builtin_return_address(0));
 }
-EXPORT_SYMBOL(vmalloc_32_noprof);
+EXPORT_SYMBOL(vmalloc_32);
 
 /**
  * vmalloc_32_user - allocate zeroed virtually contiguous 32bit memory
@@ -4056,14 +4051,14 @@ EXPORT_SYMBOL(vmalloc_32_noprof);
  *
  * Return: pointer to the allocated memory or %NULL on error
  */
-void *vmalloc_32_user_noprof(unsigned long size)
+void *vmalloc_32_user(unsigned long size)
 {
-	return __vmalloc_node_range_noprof(size, SHMLBA,  VMALLOC_START, VMALLOC_END,
+	return __vmalloc_node_range(size, SHMLBA,  VMALLOC_START, VMALLOC_END,
 				    GFP_VMALLOC32 | __GFP_ZERO, PAGE_KERNEL,
 				    VM_USERMAP, NUMA_NO_NODE,
 				    __builtin_return_address(0));
 }
-EXPORT_SYMBOL(vmalloc_32_user_noprof);
+EXPORT_SYMBOL(vmalloc_32_user);
 
 /*
  * Atomically zero bytes in the iterator.
@@ -4677,7 +4672,7 @@ retry:
 
 		spin_lock(&vn->busy.lock);
 		insert_vmap_area(vas[area], &vn->busy.root, &vn->busy.head);
-		setup_vmalloc_vm(vms[area], vas[area], VM_ALLOC,
+		setup_vmalloc_vm_locked(vms[area], vas[area], VM_ALLOC,
 				 pcpu_get_vm_areas);
 		spin_unlock(&vn->busy.lock);
 	}

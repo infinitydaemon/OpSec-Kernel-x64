@@ -20,7 +20,6 @@ System calls
    futex2
    ebpf/index
    ioctl/index
-   mseal
 
 Security-related interfaces
 ===========================

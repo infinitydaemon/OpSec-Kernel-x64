@@ -16,7 +16,6 @@ Industrial I/O Kernel Drivers
 .. toctree::
    :maxdepth: 1
 
-   ad7944
    adis16475
    bno055
    ep93xx_adc

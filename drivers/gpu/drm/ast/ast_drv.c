@@ -27,7 +27,6 @@
  */
 
 #include <linux/module.h>
-#include <linux/of.h>
 #include <linux/pci.h>
 
 #include <drm/drm_aperture.h>

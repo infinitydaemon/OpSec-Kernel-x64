@@ -199,10 +199,8 @@ static void tb_retimer_nvm_authenticate_status(struct tb_port *port, u32 *status
 	 * If the retimer has it set, store it for the new retimer
 	 * device instance.
 	 */
-	for (i = 1; i <= TB_MAX_RETIMER_INDEX; i++) {
-		if (usb4_port_retimer_nvm_authenticate_status(port, i, &status[i]))
-			break;
-	}
+	for (i = 1; i <= TB_MAX_RETIMER_INDEX; i++)
+		usb4_port_retimer_nvm_authenticate_status(port, i, &status[i]);
 }
 
 static void tb_retimer_set_inbound_sbtx(struct tb_port *port)
@@ -236,10 +234,8 @@ static void tb_retimer_unset_inbound_sbtx(struct tb_port *port)
 
 	tb_port_dbg(port, "disabling sideband transactions\n");
 
-	for (i = TB_MAX_RETIMER_INDEX; i >= 1; i--) {
-		if (usb4_port_retimer_unset_inbound_sbtx(port, i))
-			break;
-	}
+	for (i = TB_MAX_RETIMER_INDEX; i >= 1; i--)
+		usb4_port_retimer_unset_inbound_sbtx(port, i);
 }
 
 static ssize_t nvm_authenticate_store(struct device *dev,

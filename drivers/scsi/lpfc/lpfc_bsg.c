@@ -5002,8 +5002,7 @@ lpfc_forced_link_speed(struct bsg_job *job)
 		goto job_error;
 	}
 
-	forced_reply->supported = test_bit(HBA_FORCED_LINK_SPEED,
-					   &phba->hba_flag)
+	forced_reply->supported = (phba->hba_flag & HBA_FORCED_LINK_SPEED)
 				   ? LPFC_FORCED_LINK_SPEED_SUPPORTED
 				   : LPFC_FORCED_LINK_SPEED_NOT_SUPPORTED;
 job_error:

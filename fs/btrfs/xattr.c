@@ -504,7 +504,7 @@ static int btrfs_initxattrs(struct inode *inode,
 	const struct xattr *xattr;
 	unsigned int nofs_flag;
 	char *name;
-	int ret = 0;
+	int err = 0;
 
 	/*
 	 * We're holding a transaction handle, so use a NOFS memory allocation
@@ -515,7 +515,7 @@ static int btrfs_initxattrs(struct inode *inode,
 		name = kmalloc(XATTR_SECURITY_PREFIX_LEN +
 			       strlen(xattr->name) + 1, GFP_KERNEL);
 		if (!name) {
-			ret = -ENOMEM;
+			err = -ENOMEM;
 			break;
 		}
 		strcpy(name, XATTR_SECURITY_PREFIX);
@@ -524,14 +524,14 @@ static int btrfs_initxattrs(struct inode *inode,
 		if (strcmp(name, XATTR_NAME_CAPS) == 0)
 			clear_bit(BTRFS_INODE_NO_CAP_XATTR, &BTRFS_I(inode)->runtime_flags);
 
-		ret = btrfs_setxattr(trans, inode, name, xattr->value,
+		err = btrfs_setxattr(trans, inode, name, xattr->value,
 				     xattr->value_len, 0);
 		kfree(name);
-		if (ret < 0)
+		if (err < 0)
 			break;
 	}
 	memalloc_nofs_restore(nofs_flag);
-	return ret;
+	return err;
 }
 
 int btrfs_xattr_security_init(struct btrfs_trans_handle *trans,

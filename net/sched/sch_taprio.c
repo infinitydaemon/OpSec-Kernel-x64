@@ -1176,13 +1176,16 @@ static int taprio_parse_mqprio_opt(struct net_device *dev,
 {
 	bool allow_overlapping_txqs = TXTIME_ASSIST_IS_ENABLED(taprio_flags);
 
-	if (!qopt) {
-		if (!dev->num_tc) {
-			NL_SET_ERR_MSG(extack, "'mqprio' configuration is necessary");
-			return -EINVAL;
-		}
-		return 0;
+	if (!qopt && !dev->num_tc) {
+		NL_SET_ERR_MSG(extack, "'mqprio' configuration is necessary");
+		return -EINVAL;
 	}
+
+	/* If num_tc is already set, it means that the user already
+	 * configured the mqprio part
+	 */
+	if (dev->num_tc)
+		return 0;
 
 	/* taprio imposes that traffic classes map 1:n to tx queues */
 	if (qopt->num_tc > dev->num_tx_queues) {
@@ -1749,7 +1752,10 @@ static int taprio_parse_tc_entries(struct Qdisc *sch,
 		fp[tc] = q->fp[tc];
 	}
 
-	nla_for_each_nested_type(n, TCA_TAPRIO_ATTR_TC_ENTRY, opt, rem) {
+	nla_for_each_nested(n, opt, rem) {
+		if (nla_type(n) != TCA_TAPRIO_ATTR_TC_ENTRY)
+			continue;
+
 		err = taprio_parse_tc_entry(sch, n, max_sdu, fp, &seen_tcs,
 					    extack);
 		if (err)

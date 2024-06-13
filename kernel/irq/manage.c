@@ -564,7 +564,7 @@ irq_set_affinity_notifier(unsigned int irq, struct irq_affinity_notify *notify)
 	/* The release function is promised process context */
 	might_sleep();
 
-	if (!desc || irq_is_nmi(desc))
+	if (!desc || desc->istate & IRQS_NMI)
 		return -EINVAL;
 
 	/* Complete initialisation of *notify */
@@ -800,14 +800,10 @@ void __enable_irq(struct irq_desc *desc)
 		irq_settings_set_noprobe(desc);
 		/*
 		 * Call irq_startup() not irq_enable() here because the
-		 * interrupt might be marked NOAUTOEN so irq_startup()
-		 * needs to be invoked when it gets enabled the first time.
-		 * This is also required when __enable_irq() is invoked for
-		 * a managed and shutdown interrupt from the S3 resume
-		 * path.
-		 *
-		 * If it was already started up, then irq_startup() will
-		 * invoke irq_enable() under the hood.
+		 * interrupt might be marked NOAUTOEN. So irq_startup()
+		 * needs to be invoked when it gets enabled the first
+		 * time. If it was already started up, then irq_startup()
+		 * will invoke irq_enable() under the hood.
 		 */
 		irq_startup(desc, IRQ_RESEND, IRQ_START_FORCE);
 		break;
@@ -902,7 +898,7 @@ int irq_set_irq_wake(unsigned int irq, unsigned int on)
 		return -EINVAL;
 
 	/* Don't use NMIs as wake up interrupts please */
-	if (irq_is_nmi(desc)) {
+	if (desc->istate & IRQS_NMI) {
 		ret = -EINVAL;
 		goto out_unlock;
 	}
@@ -1628,7 +1624,7 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 		 */
 		unsigned int oldtype;
 
-		if (irq_is_nmi(desc)) {
+		if (desc->istate & IRQS_NMI) {
 			pr_err("Invalid attempt to share NMI for %s (irq %d) on irqchip %s.\n",
 				new->name, irq, desc->irq_data.chip->name);
 			ret = -EINVAL;
@@ -2086,7 +2082,7 @@ const void *free_nmi(unsigned int irq, void *dev_id)
 	unsigned long flags;
 	const void *devname;
 
-	if (!desc || WARN_ON(!irq_is_nmi(desc)))
+	if (!desc || WARN_ON(!(desc->istate & IRQS_NMI)))
 		return NULL;
 
 	if (WARN_ON(irq_settings_is_per_cpu_devid(desc)))
@@ -2552,7 +2548,7 @@ void free_percpu_nmi(unsigned int irq, void __percpu *dev_id)
 	if (!desc || !irq_settings_is_per_cpu_devid(desc))
 		return;
 
-	if (WARN_ON(!irq_is_nmi(desc)))
+	if (WARN_ON(!(desc->istate & IRQS_NMI)))
 		return;
 
 	kfree(__free_percpu_irq(irq, dev_id));
@@ -2688,7 +2684,7 @@ int request_percpu_nmi(unsigned int irq, irq_handler_t handler,
 		return -EINVAL;
 
 	/* The line cannot already be NMI */
-	if (irq_is_nmi(desc))
+	if (desc->istate & IRQS_NMI)
 		return -EINVAL;
 
 	action = kzalloc(sizeof(struct irqaction), GFP_KERNEL);
@@ -2749,7 +2745,7 @@ int prepare_percpu_nmi(unsigned int irq)
 	if (!desc)
 		return -EINVAL;
 
-	if (WARN(!irq_is_nmi(desc),
+	if (WARN(!(desc->istate & IRQS_NMI),
 		 KERN_ERR "prepare_percpu_nmi called for a non-NMI interrupt: irq %u\n",
 		 irq)) {
 		ret = -EINVAL;
@@ -2791,7 +2787,7 @@ void teardown_percpu_nmi(unsigned int irq)
 	if (!desc)
 		return;
 
-	if (WARN_ON(!irq_is_nmi(desc)))
+	if (WARN_ON(!(desc->istate & IRQS_NMI)))
 		goto out;
 
 	irq_nmi_teardown(desc);

@@ -33,7 +33,6 @@ Hardware Monitoring Kernel Drivers
    adm1266
    adm1275
    adm9240
-   adp1050
    ads7828
    adt7410
    adt7411
@@ -251,7 +250,6 @@ Hardware Monitoring Kernel Drivers
    wm831x
    wm8350
    xgene-hwmon
-   xdp710
    xdpe12284
    xdpe152c4
    zl6100

@@ -923,7 +923,7 @@ static int zforce_probe(struct i2c_client *client)
 }
 
 static struct i2c_device_id zforce_idtable[] = {
-	{ "zforce-ts" },
+	{ "zforce-ts", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, zforce_idtable);

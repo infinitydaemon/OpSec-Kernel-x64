@@ -180,7 +180,7 @@ int nvmf_reg_read32(struct nvme_ctrl *ctrl, u32 off, u32 *val)
 	cmd.prop_get.offset = cpu_to_le32(off);
 
 	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res, NULL, 0,
-			NVME_QID_ANY, NVME_SUBMIT_RESERVED);
+			NVME_QID_ANY, 0);
 
 	if (ret >= 0)
 		*val = le64_to_cpu(res.u64);
@@ -226,7 +226,7 @@ int nvmf_reg_read64(struct nvme_ctrl *ctrl, u32 off, u64 *val)
 	cmd.prop_get.offset = cpu_to_le32(off);
 
 	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, &res, NULL, 0,
-			NVME_QID_ANY, NVME_SUBMIT_RESERVED);
+			NVME_QID_ANY, 0);
 
 	if (ret >= 0)
 		*val = le64_to_cpu(res.u64);
@@ -271,7 +271,7 @@ int nvmf_reg_write32(struct nvme_ctrl *ctrl, u32 off, u32 val)
 	cmd.prop_set.value = cpu_to_le64(val);
 
 	ret = __nvme_submit_sync_cmd(ctrl->fabrics_q, &cmd, NULL, NULL, 0,
-			NVME_QID_ANY, NVME_SUBMIT_RESERVED);
+			NVME_QID_ANY, 0);
 	if (unlikely(ret))
 		dev_err(ctrl->device,
 			"Property Set error: %d, offset %#x\n",
@@ -428,6 +428,12 @@ static void nvmf_connect_cmd_prep(struct nvme_ctrl *ctrl, u16 qid,
  * fabrics-protocol connection of the NVMe Admin queue between the
  * host system device and the allocated NVMe controller on the
  * target system via a NVMe Fabrics "Connect" command.
+ *
+ * Return:
+ *	0: success
+ *	> 0: NVMe error status code
+ *	< 0: Linux errno error code
+ *
  */
 int nvmf_connect_admin_queue(struct nvme_ctrl *ctrl)
 {
@@ -461,7 +467,7 @@ int nvmf_connect_admin_queue(struct nvme_ctrl *ctrl)
 		if (result & NVME_CONNECT_AUTHREQ_ASCR) {
 			dev_warn(ctrl->device,
 				 "qid 0: secure concatenation is not supported\n");
-			ret = -EOPNOTSUPP;
+			ret = NVME_SC_AUTH_REQUIRED;
 			goto out_free_data;
 		}
 		/* Authentication required */
@@ -469,14 +475,14 @@ int nvmf_connect_admin_queue(struct nvme_ctrl *ctrl)
 		if (ret) {
 			dev_warn(ctrl->device,
 				 "qid 0: authentication setup failed\n");
+			ret = NVME_SC_AUTH_REQUIRED;
 			goto out_free_data;
 		}
 		ret = nvme_auth_wait(ctrl, 0);
-		if (ret) {
+		if (ret)
 			dev_warn(ctrl->device,
-				 "qid 0: authentication failed, error %d\n",
-				 ret);
-		} else
+				 "qid 0: authentication failed\n");
+		else
 			dev_info(ctrl->device,
 				 "qid 0: authenticated\n");
 	}
@@ -536,7 +542,7 @@ int nvmf_connect_io_queue(struct nvme_ctrl *ctrl, u16 qid)
 		if (result & NVME_CONNECT_AUTHREQ_ASCR) {
 			dev_warn(ctrl->device,
 				 "qid 0: secure concatenation is not supported\n");
-			ret = -EOPNOTSUPP;
+			ret = NVME_SC_AUTH_REQUIRED;
 			goto out_free_data;
 		}
 		/* Authentication required */
@@ -544,13 +550,12 @@ int nvmf_connect_io_queue(struct nvme_ctrl *ctrl, u16 qid)
 		if (ret) {
 			dev_warn(ctrl->device,
 				 "qid %d: authentication setup failed\n", qid);
-			goto out_free_data;
-		}
-		ret = nvme_auth_wait(ctrl, qid);
-		if (ret) {
-			dev_warn(ctrl->device,
-				 "qid %u: authentication failed, error %d\n",
-				 qid, ret);
+			ret = NVME_SC_AUTH_REQUIRED;
+		} else {
+			ret = nvme_auth_wait(ctrl, qid);
+			if (ret)
+				dev_warn(ctrl->device,
+					 "qid %u: authentication failed\n", qid);
 		}
 	}
 out_free_data:
@@ -559,26 +564,8 @@ out_free_data:
 }
 EXPORT_SYMBOL_GPL(nvmf_connect_io_queue);
 
-/*
- * Evaluate the status information returned by the transport in order to decided
- * if a reconnect attempt should be scheduled.
- *
- * Do not retry when:
- *
- * - the DNR bit is set and the specification states no further connect
- *   attempts with the same set of paramenters should be attempted.
- *
- * - when the authentication attempt fails, because the key was invalid.
- *   This error code is set on the host side.
- */
-bool nvmf_should_reconnect(struct nvme_ctrl *ctrl, int status)
+bool nvmf_should_reconnect(struct nvme_ctrl *ctrl)
 {
-	if (status > 0 && (status & NVME_SC_DNR))
-		return false;
-
-	if (status == -EKEYREJECTED)
-		return false;
-
 	if (ctrl->opts->max_reconnects == -1 ||
 	    ctrl->nr_reconnects < ctrl->opts->max_reconnects)
 		return true;

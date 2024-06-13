@@ -2015,17 +2015,11 @@ static struct config_group nvmet_ports_group;
 static ssize_t nvmet_host_dhchap_key_show(struct config_item *item,
 		char *page)
 {
-	u8 *dhchap_secret;
-	ssize_t ret;
+	u8 *dhchap_secret = to_host(item)->dhchap_secret;
 
-	down_read(&nvmet_config_sem);
-	dhchap_secret = to_host(item)->dhchap_secret;
 	if (!dhchap_secret)
-		ret = sprintf(page, "\n");
-	else
-		ret = sprintf(page, "%s\n", dhchap_secret);
-	up_read(&nvmet_config_sem);
-	return ret;
+		return sprintf(page, "\n");
+	return sprintf(page, "%s\n", dhchap_secret);
 }
 
 static ssize_t nvmet_host_dhchap_key_store(struct config_item *item,
@@ -2049,16 +2043,10 @@ static ssize_t nvmet_host_dhchap_ctrl_key_show(struct config_item *item,
 		char *page)
 {
 	u8 *dhchap_secret = to_host(item)->dhchap_ctrl_secret;
-	ssize_t ret;
 
-	down_read(&nvmet_config_sem);
-	dhchap_secret = to_host(item)->dhchap_ctrl_secret;
 	if (!dhchap_secret)
-		ret = sprintf(page, "\n");
-	else
-		ret = sprintf(page, "%s\n", dhchap_secret);
-	up_read(&nvmet_config_sem);
-	return ret;
+		return sprintf(page, "\n");
+	return sprintf(page, "%s\n", dhchap_secret);
 }
 
 static ssize_t nvmet_host_dhchap_ctrl_key_store(struct config_item *item,

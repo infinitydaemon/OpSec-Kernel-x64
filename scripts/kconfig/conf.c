@@ -446,7 +446,7 @@ help:
 	}
 }
 
-static void conf_choice(struct menu *menu)
+static int conf_choice(struct menu *menu)
 {
 	struct symbol *sym, *def_sym;
 	struct menu *child;
@@ -459,18 +459,19 @@ static void conf_choice(struct menu *menu)
 		sym_calc_value(sym);
 		switch (sym_get_tristate_value(sym)) {
 		case no:
+			return 1;
 		case mod:
-			return;
+			return 0;
 		case yes:
 			break;
 		}
 	} else {
 		switch (sym_get_tristate_value(sym)) {
 		case no:
-			return;
+			return 1;
 		case mod:
 			printf("%*s%s\n", indent - 1, "", menu_get_prompt(menu));
-			return;
+			return 0;
 		case yes:
 			break;
 		}
@@ -496,8 +497,9 @@ static void conf_choice(struct menu *menu)
 				printf("%*c", indent, '>');
 			} else
 				printf("%*c", indent, ' ');
-			printf(" %d. %s (%s)", cnt, menu_get_prompt(child),
-			       child->sym->name);
+			printf(" %d. %s", cnt, menu_get_prompt(child));
+			if (child->sym->name)
+				printf(" (%s)", child->sym->name);
 			if (!sym_has_value(child->sym))
 				printf(" (NEW)");
 			printf("\n");
@@ -550,7 +552,7 @@ static void conf_choice(struct menu *menu)
 			continue;
 		}
 		sym_set_tristate_value(child->sym, yes);
-		return;
+		return 1;
 	}
 }
 

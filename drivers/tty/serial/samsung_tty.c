@@ -329,7 +329,7 @@ static void s3c24xx_serial_tx_dma_complete(void *args)
 {
 	struct s3c24xx_uart_port *ourport = args;
 	struct uart_port *port = &ourport->port;
-	struct tty_port *tport = &port->state->port;
+	struct circ_buf *xmit = &port->state->xmit;
 	struct s3c24xx_uart_dma *dma = ourport->dma;
 	struct dma_tx_state state;
 	unsigned long flags;
@@ -348,7 +348,7 @@ static void s3c24xx_serial_tx_dma_complete(void *args)
 	uart_xmit_advance(port, count);
 	ourport->tx_in_progress = 0;
 
-	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
+	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
 		uart_write_wakeup(port);
 
 	s3c24xx_serial_start_next_tx(ourport);
@@ -431,15 +431,17 @@ static void s3c24xx_serial_start_tx_pio(struct s3c24xx_uart_port *ourport)
 }
 
 static int s3c24xx_serial_start_tx_dma(struct s3c24xx_uart_port *ourport,
-				      unsigned int count, unsigned int tail)
+				      unsigned int count)
 {
+	struct uart_port *port = &ourport->port;
+	struct circ_buf *xmit = &port->state->xmit;
 	struct s3c24xx_uart_dma *dma = ourport->dma;
 
 	if (ourport->tx_mode != S3C24XX_TX_DMA)
 		enable_tx_dma(ourport);
 
 	dma->tx_size = count & ~(dma_get_cache_alignment() - 1);
-	dma->tx_transfer_addr = dma->tx_addr + tail;
+	dma->tx_transfer_addr = dma->tx_addr + xmit->tail;
 
 	dma_sync_single_for_device(dma->tx_chan->device->dev,
 				   dma->tx_transfer_addr, dma->tx_size,
@@ -466,11 +468,11 @@ static int s3c24xx_serial_start_tx_dma(struct s3c24xx_uart_port *ourport,
 static void s3c24xx_serial_start_next_tx(struct s3c24xx_uart_port *ourport)
 {
 	struct uart_port *port = &ourport->port;
-	struct tty_port *tport = &port->state->port;
-	unsigned int count, tail;
+	struct circ_buf *xmit = &port->state->xmit;
+	unsigned long count;
 
 	/* Get data size up to the end of buffer */
-	count = kfifo_out_linear(&tport->xmit_fifo, &tail, UART_XMIT_SIZE);
+	count = CIRC_CNT_TO_END(xmit->head, xmit->tail, UART_XMIT_SIZE);
 
 	if (!count) {
 		s3c24xx_serial_stop_tx(port);
@@ -479,16 +481,16 @@ static void s3c24xx_serial_start_next_tx(struct s3c24xx_uart_port *ourport)
 
 	if (!ourport->dma || !ourport->dma->tx_chan ||
 	    count < ourport->min_dma_size ||
-	    tail & (dma_get_cache_alignment() - 1))
+	    xmit->tail & (dma_get_cache_alignment() - 1))
 		s3c24xx_serial_start_tx_pio(ourport);
 	else
-		s3c24xx_serial_start_tx_dma(ourport, count, tail);
+		s3c24xx_serial_start_tx_dma(ourport, count);
 }
 
 static void s3c24xx_serial_start_tx(struct uart_port *port)
 {
 	struct s3c24xx_uart_port *ourport = to_ourport(port);
-	struct tty_port *tport = &port->state->port;
+	struct circ_buf *xmit = &port->state->xmit;
 
 	if (!ourport->tx_enabled) {
 		if (port->flags & UPF_CONS_FLOW)
@@ -500,8 +502,7 @@ static void s3c24xx_serial_start_tx(struct uart_port *port)
 	}
 
 	if (ourport->dma && ourport->dma->tx_chan) {
-		if (!kfifo_is_empty(&tport->xmit_fifo) &&
-				!ourport->tx_in_progress)
+		if (!uart_circ_empty(xmit) && !ourport->tx_in_progress)
 			s3c24xx_serial_start_next_tx(ourport);
 	}
 }
@@ -867,19 +868,18 @@ static irqreturn_t s3c24xx_serial_rx_irq(int irq, void *dev_id)
 static void s3c24xx_serial_tx_chars(struct s3c24xx_uart_port *ourport)
 {
 	struct uart_port *port = &ourport->port;
-	struct tty_port *tport = &port->state->port;
-	unsigned int count, dma_count = 0, tail;
+	struct circ_buf *xmit = &port->state->xmit;
+	int count, dma_count = 0;
 
-	count = kfifo_out_linear(&tport->xmit_fifo, &tail, UART_XMIT_SIZE);
+	count = CIRC_CNT_TO_END(xmit->head, xmit->tail, UART_XMIT_SIZE);
 
 	if (ourport->dma && ourport->dma->tx_chan &&
 	    count >= ourport->min_dma_size) {
 		int align = dma_get_cache_alignment() -
-			(tail & (dma_get_cache_alignment() - 1));
+			(xmit->tail & (dma_get_cache_alignment() - 1));
 		if (count - align >= ourport->min_dma_size) {
 			dma_count = count - align;
 			count = align;
-			tail += align;
 		}
 	}
 
@@ -894,7 +894,7 @@ static void s3c24xx_serial_tx_chars(struct s3c24xx_uart_port *ourport)
 	 * stopped, disable the uart and exit
 	 */
 
-	if (kfifo_is_empty(&tport->xmit_fifo) || uart_tx_stopped(port)) {
+	if (uart_circ_empty(xmit) || uart_tx_stopped(port)) {
 		s3c24xx_serial_stop_tx(port);
 		return;
 	}
@@ -906,25 +906,24 @@ static void s3c24xx_serial_tx_chars(struct s3c24xx_uart_port *ourport)
 		dma_count = 0;
 	}
 
-	while (!(rd_regl(port, S3C2410_UFSTAT) & ourport->info->tx_fifofull)) {
-		unsigned char ch;
-
-		if (!uart_fifo_get(port, &ch))
+	while (!uart_circ_empty(xmit) && count > 0) {
+		if (rd_regl(port, S3C2410_UFSTAT) & ourport->info->tx_fifofull)
 			break;
 
-		wr_reg(port, S3C2410_UTXH, ch);
+		wr_reg(port, S3C2410_UTXH, xmit->buf[xmit->tail]);
+		uart_xmit_advance(port, 1);
 		count--;
 	}
 
 	if (!count && dma_count) {
-		s3c24xx_serial_start_tx_dma(ourport, dma_count, tail);
+		s3c24xx_serial_start_tx_dma(ourport, dma_count);
 		return;
 	}
 
-	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
+	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
 		uart_write_wakeup(port);
 
-	if (kfifo_is_empty(&tport->xmit_fifo))
+	if (uart_circ_empty(xmit))
 		s3c24xx_serial_stop_tx(port);
 }
 
@@ -1119,8 +1118,7 @@ static int s3c24xx_serial_request_dma(struct s3c24xx_uart_port *p)
 
 	/* TX buffer */
 	dma->tx_addr = dma_map_single(dma->tx_chan->device->dev,
-				      p->port.state->port.xmit_buf,
-				      UART_XMIT_SIZE,
+				      p->port.state->xmit.buf, UART_XMIT_SIZE,
 				      DMA_TO_DEVICE);
 	if (dma_mapping_error(dma->tx_chan->device->dev, dma->tx_addr)) {
 		reason = "DMA mapping error for TX buffer";

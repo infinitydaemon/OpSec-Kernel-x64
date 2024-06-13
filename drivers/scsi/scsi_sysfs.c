@@ -1609,14 +1609,13 @@ restart:
 }
 EXPORT_SYMBOL(scsi_remove_target);
 
-int __scsi_register_driver(struct device_driver *drv, struct module *owner)
+int scsi_register_driver(struct device_driver *drv)
 {
 	drv->bus = &scsi_bus_type;
-	drv->owner = owner;
 
 	return driver_register(drv);
 }
-EXPORT_SYMBOL(__scsi_register_driver);
+EXPORT_SYMBOL(scsi_register_driver);
 
 int scsi_register_interface(struct class_interface *intf)
 {

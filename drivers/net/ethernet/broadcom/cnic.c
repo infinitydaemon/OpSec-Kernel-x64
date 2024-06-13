@@ -3682,8 +3682,7 @@ static int cnic_get_v4_route(struct sockaddr_in *dst_addr,
 #if defined(CONFIG_INET)
 	struct rtable *rt;
 
-	rt = ip_route_output(&init_net, dst_addr->sin_addr.s_addr, 0, 0, 0,
-			     RT_SCOPE_UNIVERSE);
+	rt = ip_route_output(&init_net, dst_addr->sin_addr.s_addr, 0, 0, 0);
 	if (!IS_ERR(rt)) {
 		*dst = &rt->dst;
 		return 0;

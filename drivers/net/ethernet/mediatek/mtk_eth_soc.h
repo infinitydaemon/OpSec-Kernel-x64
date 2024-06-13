@@ -32,9 +32,7 @@
 #define MTK_TX_DMA_BUF_LEN	0x3fff
 #define MTK_TX_DMA_BUF_LEN_V2	0xffff
 #define MTK_QDMA_RING_SIZE	2048
-#define MTK_DMA_SIZE(x)		(SZ_##x)
-#define MTK_FQ_DMA_HEAD		32
-#define MTK_FQ_DMA_LENGTH	2048
+#define MTK_DMA_SIZE		512
 #define MTK_RX_ETH_HLEN		(ETH_HLEN + ETH_FCS_LEN)
 #define MTK_RX_HLEN		(NET_SKB_PAD + MTK_RX_ETH_HLEN + NET_IP_ALIGN)
 #define MTK_DMA_DUMMY_DESC	0xffffffff
@@ -1178,8 +1176,6 @@ struct mtk_soc_data {
 		u32	desc_size;
 		u32	dma_max_len;
 		u32	dma_len_offset;
-		u32	dma_size;
-		u32	fq_dma_size;
 	} tx;
 	struct {
 		u32	desc_size;
@@ -1187,7 +1183,6 @@ struct mtk_soc_data {
 		u32	dma_l4_valid;
 		u32	dma_max_len;
 		u32	dma_len_offset;
-		u32	dma_size;
 	} rx;
 };
 
@@ -1250,7 +1245,7 @@ struct mtk_eth {
 	spinlock_t			page_lock;
 	spinlock_t			tx_irq_lock;
 	spinlock_t			rx_irq_lock;
-	struct net_device		*dummy_dev;
+	struct net_device		dummy_dev;
 	struct net_device		*netdev[MTK_MAX_DEVS];
 	struct mtk_mac			*mac[MTK_MAX_DEVS];
 	int				irq[3];
@@ -1269,7 +1264,7 @@ struct mtk_eth {
 	struct napi_struct		rx_napi;
 	void				*scratch_ring;
 	dma_addr_t			phy_scratch_ring;
-	void				*scratch_head[MTK_FQ_DMA_HEAD];
+	void				*scratch_head;
 	struct clk			*clks[MTK_CLK_MAX];
 
 	struct mii_bus			*mii_bus;

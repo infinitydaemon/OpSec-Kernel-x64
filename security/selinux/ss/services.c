@@ -633,7 +633,8 @@ static void context_struct_compute_av(struct policydb *policydb,
 	}
 
 	if (unlikely(!tclass || tclass > policydb->p_classes.nprim)) {
-		pr_warn_ratelimited("SELinux:  Invalid class %u\n", tclass);
+		if (printk_ratelimit())
+			pr_warn("SELinux:  Invalid class %hu\n", tclass);
 		return;
 	}
 

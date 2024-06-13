@@ -73,11 +73,11 @@ void *get_shadow_from_swap_cache(swp_entry_t entry)
 {
 	struct address_space *address_space = swap_address_space(entry);
 	pgoff_t idx = swp_offset(entry);
-	void *shadow;
+	struct page *page;
 
-	shadow = xa_load(&address_space->i_pages, idx);
-	if (xa_is_value(shadow))
-		return shadow;
+	page = xa_load(&address_space->i_pages, idx);
+	if (xa_is_value(page))
+		return page;
 	return NULL;
 }
 
@@ -301,7 +301,7 @@ void free_page_and_swap_cache(struct page *page)
 	struct folio *folio = page_folio(page);
 
 	free_swap_cache(folio);
-	if (!is_huge_zero_folio(folio))
+	if (!is_huge_zero_page(page))
 		folio_put(folio);
 }
 

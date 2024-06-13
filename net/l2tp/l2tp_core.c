@@ -794,7 +794,6 @@ static void l2tp_session_queue_purge(struct l2tp_session *session)
 static int l2tp_udp_recv_core(struct l2tp_tunnel *tunnel, struct sk_buff *skb)
 {
 	struct l2tp_session *session = NULL;
-	struct l2tp_tunnel *orig_tunnel = tunnel;
 	unsigned char *ptr, *optr;
 	u16 hdrflags;
 	u32 tunnel_id, session_id;
@@ -820,8 +819,13 @@ static int l2tp_udp_recv_core(struct l2tp_tunnel *tunnel, struct sk_buff *skb)
 	/* Get L2TP header flags */
 	hdrflags = ntohs(*(__be16 *)ptr);
 
-	/* Get protocol version */
+	/* Check protocol version */
 	version = hdrflags & L2TP_HDR_VER_MASK;
+	if (version != tunnel->version) {
+		pr_debug_ratelimited("%s: recv protocol version mismatch: got %d expected %d\n",
+				     tunnel->name, version, tunnel->version);
+		goto invalid;
+	}
 
 	/* Get length of L2TP packet */
 	length = skb->len;
@@ -833,7 +837,7 @@ static int l2tp_udp_recv_core(struct l2tp_tunnel *tunnel, struct sk_buff *skb)
 	/* Skip flags */
 	ptr += 2;
 
-	if (version == L2TP_HDR_VER_2) {
+	if (tunnel->version == L2TP_HDR_VER_2) {
 		/* If length is present, skip it */
 		if (hdrflags & L2TP_HDRFLAG_L)
 			ptr += 2;
@@ -841,20 +845,6 @@ static int l2tp_udp_recv_core(struct l2tp_tunnel *tunnel, struct sk_buff *skb)
 		/* Extract tunnel and session ID */
 		tunnel_id = ntohs(*(__be16 *)ptr);
 		ptr += 2;
-
-		if (tunnel_id != tunnel->tunnel_id) {
-			/* We are receiving trafic for another tunnel, probably
-			 * because we have several tunnels between the same
-			 * IP/port quadruple, look it up.
-			 */
-			struct l2tp_tunnel *alt_tunnel;
-
-			alt_tunnel = l2tp_tunnel_get(tunnel->l2tp_net, tunnel_id);
-			if (!alt_tunnel)
-				goto pass;
-			tunnel = alt_tunnel;
-		}
-
 		session_id = ntohs(*(__be16 *)ptr);
 		ptr += 2;
 	} else {
@@ -862,13 +852,6 @@ static int l2tp_udp_recv_core(struct l2tp_tunnel *tunnel, struct sk_buff *skb)
 		tunnel_id = tunnel->tunnel_id;
 		session_id = ntohl(*(__be32 *)ptr);
 		ptr += 4;
-	}
-
-	/* Check protocol version */
-	if (version != tunnel->version) {
-		pr_debug_ratelimited("%s: recv protocol version mismatch: got %d expected %d\n",
-				     tunnel->name, version, tunnel->version);
-		goto invalid;
 	}
 
 	/* Find the session context */
@@ -892,9 +875,6 @@ static int l2tp_udp_recv_core(struct l2tp_tunnel *tunnel, struct sk_buff *skb)
 	l2tp_recv_common(session, skb, ptr, optr, hdrflags, length);
 	l2tp_session_dec_refcount(session);
 
-	if (tunnel != orig_tunnel)
-		l2tp_tunnel_dec_refcount(tunnel);
-
 	return 0;
 
 invalid:
@@ -903,9 +883,6 @@ invalid:
 pass:
 	/* Put UDP header back */
 	__skb_push(skb, sizeof(struct udphdr));
-
-	if (tunnel != orig_tunnel)
-		l2tp_tunnel_dec_refcount(tunnel);
 
 	return 1;
 }

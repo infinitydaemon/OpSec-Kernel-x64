@@ -502,7 +502,7 @@ int conf_read(const char *name)
 
 	for_all_symbols(sym) {
 		sym_calc_value(sym);
-		if (sym_is_choice(sym))
+		if (sym_is_choice(sym) || (sym->flags & SYMBOL_NO_WRITE))
 			continue;
 		if (sym_has_value(sym) && (sym->flags & SYMBOL_WRITE)) {
 			/* check that calculated value agrees with saved value */
@@ -533,6 +533,19 @@ int conf_read(const char *name)
 			 */
 			if (sym->visible == no && !conf_unsaved)
 				sym->flags &= ~SYMBOL_DEF_USER;
+			switch (sym->type) {
+			case S_STRING:
+			case S_INT:
+			case S_HEX:
+				/* Reset a string value if it's out of range */
+				if (sym_string_within_range(sym, sym->def[S_DEF_USER].val))
+					break;
+				sym->flags &= ~SYMBOL_VALID;
+				conf_unsaved++;
+				break;
+			default:
+				break;
+			}
 		}
 	}
 
@@ -780,38 +793,58 @@ int conf_write_defconfig(const char *filename)
 
 	sym_clear_all_valid();
 
-	menu_for_each_entry(menu) {
-		struct menu *choice;
+	/* Traverse all menus to find all relevant symbols */
+	menu = rootmenu.list;
 
+	while (menu != NULL)
+	{
 		sym = menu->sym;
 		if (sym && !sym_is_choice(sym)) {
 			sym_calc_value(sym);
 			if (!(sym->flags & SYMBOL_WRITE))
-				continue;
+				goto next_menu;
 			sym->flags &= ~SYMBOL_WRITE;
 			/* If we cannot change the symbol - skip */
 			if (!sym_is_changeable(sym))
-				continue;
+				goto next_menu;
 			/* If symbol equals to default value - skip */
 			if (strcmp(sym_get_string_value(sym), sym_get_string_default(sym)) == 0)
-				continue;
+				goto next_menu;
 
 			/*
 			 * If symbol is a choice value and equals to the
 			 * default for a choice - skip.
+			 * But only if value is bool and equal to "y" and
+			 * choice is not "optional".
+			 * (If choice is "optional" then all values can be "n")
 			 */
-			choice = sym_get_choice_menu(sym);
-			if (choice) {
+			if (sym_is_choice_value(sym)) {
+				struct symbol *cs;
 				struct symbol *ds;
 
-				ds = sym_choice_default(choice->sym);
-				if (sym == ds) {
+				cs = prop_get_symbol(sym_get_choice_prop(sym));
+				ds = sym_choice_default(cs);
+				if (!sym_is_optional(cs) && sym == ds) {
 					if ((sym->type == S_BOOLEAN) &&
 					    sym_get_tristate_value(sym) == yes)
-						continue;
+						goto next_menu;
 				}
 			}
 			print_symbol_for_dotconfig(out, sym);
+		}
+next_menu:
+		if (menu->list != NULL) {
+			menu = menu->list;
+		}
+		else if (menu->next != NULL) {
+			menu = menu->next;
+		} else {
+			while ((menu = menu->parent)) {
+				if (menu->next != NULL) {
+					menu = menu->next;
+					break;
+				}
+			}
 		}
 	}
 	fclose(out);
@@ -873,7 +906,7 @@ int conf_write(const char *name)
 				     "# %s\n"
 				     "#\n", str);
 			need_newline = false;
-		} else if (!sym_is_choice(sym) &&
+		} else if (!(sym->flags & SYMBOL_CHOICE) &&
 			   !(sym->flags & SYMBOL_WRITTEN)) {
 			sym_calc_value(sym);
 			if (!(sym->flags & SYMBOL_WRITE))
@@ -995,7 +1028,7 @@ static int conf_touch_deps(void)
 
 	for_all_symbols(sym) {
 		sym_calc_value(sym);
-		if (sym_is_choice(sym))
+		if ((sym->flags & SYMBOL_NO_WRITE) || !sym->name)
 			continue;
 		if (sym->flags & SYMBOL_WRITE) {
 			if (sym->flags & SYMBOL_DEF_AUTO) {

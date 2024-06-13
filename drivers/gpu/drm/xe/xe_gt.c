@@ -29,7 +29,6 @@
 #include "xe_gt_mcr.h"
 #include "xe_gt_pagefault.h"
 #include "xe_gt_printk.h"
-#include "xe_gt_sriov_pf.h"
 #include "xe_gt_sysfs.h"
 #include "xe_gt_tlb_invalidation.h"
 #include "xe_gt_topology.h"
@@ -44,7 +43,6 @@
 #include "xe_migrate.h"
 #include "xe_mmio.h"
 #include "xe_pat.h"
-#include "xe_pm.h"
 #include "xe_mocs.h"
 #include "xe_reg_sr.h"
 #include "xe_ring_ops.h"
@@ -312,12 +310,6 @@ int xe_gt_init_early(struct xe_gt *gt)
 {
 	int err;
 
-	if (IS_SRIOV_PF(gt_to_xe(gt))) {
-		err = xe_gt_sriov_pf_init_early(gt);
-		if (err)
-			return err;
-	}
-
 	err = xe_force_wake_get(gt_to_fw(gt), XE_FW_GT);
 	if (err)
 		return err;
@@ -354,6 +346,7 @@ static int gt_fw_domain_init(struct xe_gt *gt)
 {
 	int err, i;
 
+	xe_device_mem_access_get(gt_to_xe(gt));
 	err = xe_force_wake_get(gt_to_fw(gt), XE_FW_GT);
 	if (err)
 		goto err_hw_fence_irq;
@@ -366,9 +359,7 @@ static int gt_fw_domain_init(struct xe_gt *gt)
 			xe_lmtt_init(&gt_to_tile(gt)->sriov.pf.lmtt);
 	}
 
-	err = xe_gt_idle_sysfs_init(&gt->gtidle);
-	if (err)
-		goto err_force_wake;
+	xe_gt_idle_sysfs_init(&gt->gtidle);
 
 	/* Enable per hw engine IRQs */
 	xe_irq_enable_hwe(gt);
@@ -382,7 +373,9 @@ static int gt_fw_domain_init(struct xe_gt *gt)
 
 	err = xe_hw_engine_class_sysfs_init(gt);
 	if (err)
-		goto err_force_wake;
+		drm_warn(&gt_to_xe(gt)->drm,
+			 "failed to register engines sysfs directory, err: %d\n",
+			 err);
 
 	/* Initialize CCS mode sysfs after early initialization of HW engines */
 	err = xe_gt_ccs_mode_sysfs_init(gt);
@@ -397,6 +390,7 @@ static int gt_fw_domain_init(struct xe_gt *gt)
 
 	err = xe_force_wake_put(gt_to_fw(gt), XE_FW_GT);
 	XE_WARN_ON(err);
+	xe_device_mem_access_put(gt_to_xe(gt));
 
 	return 0;
 
@@ -406,6 +400,7 @@ err_force_wake:
 err_hw_fence_irq:
 	for (i = 0; i < XE_ENGINE_CLASS_MAX; ++i)
 		xe_hw_fence_irq_finish(&gt->fence_irq[i]);
+	xe_device_mem_access_put(gt_to_xe(gt));
 
 	return err;
 }
@@ -414,6 +409,7 @@ static int all_fw_domain_init(struct xe_gt *gt)
 {
 	int err, i;
 
+	xe_device_mem_access_get(gt_to_xe(gt));
 	err = xe_force_wake_get(gt_to_fw(gt), XE_FORCEWAKE_ALL);
 	if (err)
 		goto err_hw_fence_irq;
@@ -479,6 +475,7 @@ static int all_fw_domain_init(struct xe_gt *gt)
 
 	err = xe_force_wake_put(gt_to_fw(gt), XE_FORCEWAKE_ALL);
 	XE_WARN_ON(err);
+	xe_device_mem_access_put(gt_to_xe(gt));
 
 	return 0;
 
@@ -487,6 +484,7 @@ err_force_wake:
 err_hw_fence_irq:
 	for (i = 0; i < XE_ENGINE_CLASS_MAX; ++i)
 		xe_hw_fence_irq_finish(&gt->fence_irq[i]);
+	xe_device_mem_access_put(gt_to_xe(gt));
 
 	return err;
 }
@@ -499,6 +497,7 @@ int xe_gt_init_hwconfig(struct xe_gt *gt)
 {
 	int err;
 
+	xe_device_mem_access_get(gt_to_xe(gt));
 	err = xe_force_wake_get(gt_to_fw(gt), XE_FW_GT);
 	if (err)
 		goto out;
@@ -521,6 +520,8 @@ int xe_gt_init_hwconfig(struct xe_gt *gt)
 out_fw:
 	xe_force_wake_put(gt_to_fw(gt), XE_FW_GT);
 out:
+	xe_device_mem_access_put(gt_to_xe(gt));
+
 	return err;
 }
 
@@ -546,17 +547,13 @@ int xe_gt_init(struct xe_gt *gt)
 
 	xe_mocs_init_early(gt);
 
-	err = xe_gt_sysfs_init(gt);
-	if (err)
-		return err;
+	xe_gt_sysfs_init(gt);
 
 	err = gt_fw_domain_init(gt);
 	if (err)
 		return err;
 
-	err = xe_gt_freq_init(gt);
-	if (err)
-		return err;
+	xe_gt_freq_init(gt);
 
 	xe_force_wake_init_engines(gt, gt_to_fw(gt));
 
@@ -564,7 +561,11 @@ int xe_gt_init(struct xe_gt *gt)
 	if (err)
 		return err;
 
-	return drmm_add_action_or_reset(&gt_to_xe(gt)->drm, gt_fini, gt);
+	err = drmm_add_action_or_reset(&gt_to_xe(gt)->drm, gt_fini, gt);
+	if (err)
+		return err;
+
+	return 0;
 }
 
 static int do_gt_reset(struct xe_gt *gt)
@@ -644,9 +645,9 @@ static int gt_reset(struct xe_gt *gt)
 		goto err_fail;
 	}
 
-	xe_pm_runtime_get(gt_to_xe(gt));
 	xe_gt_sanitize(gt);
 
+	xe_device_mem_access_get(gt_to_xe(gt));
 	err = xe_force_wake_get(gt_to_fw(gt), XE_FORCEWAKE_ALL);
 	if (err)
 		goto err_msg;
@@ -670,8 +671,8 @@ static int gt_reset(struct xe_gt *gt)
 		goto err_out;
 
 	err = xe_force_wake_put(gt_to_fw(gt), XE_FORCEWAKE_ALL);
+	xe_device_mem_access_put(gt_to_xe(gt));
 	XE_WARN_ON(err);
-	xe_pm_runtime_put(gt_to_xe(gt));
 
 	xe_gt_info(gt, "reset done\n");
 
@@ -681,7 +682,7 @@ err_out:
 	XE_WARN_ON(xe_force_wake_put(gt_to_fw(gt), XE_FORCEWAKE_ALL));
 err_msg:
 	XE_WARN_ON(xe_uc_start(&gt->uc));
-	xe_pm_runtime_put(gt_to_xe(gt));
+	xe_device_mem_access_put(gt_to_xe(gt));
 err_fail:
 	xe_gt_err(gt, "reset failed (%pe)\n", ERR_PTR(err));
 
@@ -711,20 +712,22 @@ void xe_gt_reset_async(struct xe_gt *gt)
 
 void xe_gt_suspend_prepare(struct xe_gt *gt)
 {
+	xe_device_mem_access_get(gt_to_xe(gt));
 	XE_WARN_ON(xe_force_wake_get(gt_to_fw(gt), XE_FORCEWAKE_ALL));
 
 	xe_uc_stop_prepare(&gt->uc);
 
 	XE_WARN_ON(xe_force_wake_put(gt_to_fw(gt), XE_FORCEWAKE_ALL));
+	xe_device_mem_access_put(gt_to_xe(gt));
 }
 
 int xe_gt_suspend(struct xe_gt *gt)
 {
 	int err;
 
-	xe_gt_dbg(gt, "suspending\n");
 	xe_gt_sanitize(gt);
 
+	xe_device_mem_access_get(gt_to_xe(gt));
 	err = xe_force_wake_get(gt_to_fw(gt), XE_FORCEWAKE_ALL);
 	if (err)
 		goto err_msg;
@@ -734,13 +737,15 @@ int xe_gt_suspend(struct xe_gt *gt)
 		goto err_force_wake;
 
 	XE_WARN_ON(xe_force_wake_put(gt_to_fw(gt), XE_FORCEWAKE_ALL));
-	xe_gt_dbg(gt, "suspended\n");
+	xe_device_mem_access_put(gt_to_xe(gt));
+	xe_gt_info(gt, "suspended\n");
 
 	return 0;
 
 err_force_wake:
 	XE_WARN_ON(xe_force_wake_put(gt_to_fw(gt), XE_FORCEWAKE_ALL));
 err_msg:
+	xe_device_mem_access_put(gt_to_xe(gt));
 	xe_gt_err(gt, "suspend failed (%pe)\n", ERR_PTR(err));
 
 	return err;
@@ -750,7 +755,7 @@ int xe_gt_resume(struct xe_gt *gt)
 {
 	int err;
 
-	xe_gt_dbg(gt, "resuming\n");
+	xe_device_mem_access_get(gt_to_xe(gt));
 	err = xe_force_wake_get(gt_to_fw(gt), XE_FORCEWAKE_ALL);
 	if (err)
 		goto err_msg;
@@ -760,13 +765,15 @@ int xe_gt_resume(struct xe_gt *gt)
 		goto err_force_wake;
 
 	XE_WARN_ON(xe_force_wake_put(gt_to_fw(gt), XE_FORCEWAKE_ALL));
-	xe_gt_dbg(gt, "resumed\n");
+	xe_device_mem_access_put(gt_to_xe(gt));
+	xe_gt_info(gt, "resumed\n");
 
 	return 0;
 
 err_force_wake:
 	XE_WARN_ON(xe_force_wake_put(gt_to_fw(gt), XE_FORCEWAKE_ALL));
 err_msg:
+	xe_device_mem_access_put(gt_to_xe(gt));
 	xe_gt_err(gt, "resume failed (%pe)\n", ERR_PTR(err));
 
 	return err;

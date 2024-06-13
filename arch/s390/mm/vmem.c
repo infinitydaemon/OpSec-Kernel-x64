@@ -13,9 +13,7 @@
 #include <linux/slab.h>
 #include <linux/sort.h>
 #include <asm/page-states.h>
-#include <asm/abs_lowcore.h>
 #include <asm/cacheflush.h>
-#include <asm/maccess.h>
 #include <asm/nospec-branch.h>
 #include <asm/ctlreg.h>
 #include <asm/pgalloc.h>
@@ -23,7 +21,6 @@
 #include <asm/tlbflush.h>
 #include <asm/sections.h>
 #include <asm/set_memory.h>
-#include <asm/physmem_info.h>
 
 static DEFINE_MUTEX(vmem_mutex);
 
@@ -439,7 +436,7 @@ static int modify_pagetable(unsigned long start, unsigned long end, bool add,
 	if (WARN_ON_ONCE(!PAGE_ALIGNED(start | end)))
 		return -EINVAL;
 	/* Don't mess with any tables not fully in 1:1 mapping & vmemmap area */
-	if (WARN_ON_ONCE(end > __abs_lowcore))
+	if (WARN_ON_ONCE(end > VMALLOC_START))
 		return -EINVAL;
 	for (addr = start; addr < end; addr = next) {
 		next = pgd_addr_end(addr, end);

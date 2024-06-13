@@ -43,7 +43,7 @@
 	(((type) << TYPE_SHIFT) | ((srcport) << 12) | ((dstport) << 0))
 #define VCHIQ_MSG_TYPE(msgid)          ((unsigned int)(msgid) >> TYPE_SHIFT)
 #define VCHIQ_MSG_SRCPORT(msgid) \
-	((unsigned short)(((unsigned int)(msgid) >> 12) & 0xfff))
+	(unsigned short)(((unsigned int)(msgid) >> 12) & 0xfff)
 #define VCHIQ_MSG_DSTPORT(msgid) \
 	((unsigned short)(msgid) & 0xfff)
 
@@ -149,6 +149,9 @@ static inline void check_sizes(void)
 	BUILD_BUG_ON_NOT_POWER_OF_2(VCHIQ_MAX_SERVICES);
 }
 
+DEFINE_SPINLOCK(bulk_waiter_spinlock);
+static DEFINE_SPINLOCK(quota_spinlock);
+
 static unsigned int handle_seq;
 
 static const char *const srvstate_names[] = {
@@ -227,7 +230,6 @@ struct vchiq_service *handle_to_service(struct vchiq_instance *instance, unsigne
 
 	return rcu_dereference(instance->state->services[idx]);
 }
-
 struct vchiq_service *
 find_service_by_handle(struct vchiq_instance *instance, unsigned int handle)
 {
@@ -689,7 +691,7 @@ reserve_space(struct vchiq_state *state, size_t space, int is_blocking)
 			/* But first, flush through the last slot. */
 			state->local_tx_pos = tx_pos;
 			local->tx_pos = tx_pos;
-			remote_event_signal(state, &state->remote->trigger);
+			remote_event_signal(&state->remote->trigger);
 
 			if (!is_blocking ||
 			    (wait_for_completion_interruptible(&state->slot_available_event)))
@@ -698,8 +700,7 @@ reserve_space(struct vchiq_state *state, size_t space, int is_blocking)
 
 		if (tx_pos == (state->slot_queue_available * VCHIQ_SLOT_SIZE)) {
 			complete(&state->slot_available_event);
-			dev_warn(state->dev, "%s: invalid tx_pos: %d\n",
-				 __func__, tx_pos);
+			pr_warn("%s: invalid tx_pos: %d\n", __func__, tx_pos);
 			return NULL;
 		}
 
@@ -723,11 +724,11 @@ process_free_data_message(struct vchiq_state *state, u32 *service_found,
 	struct vchiq_service_quota *quota = &state->service_quotas[port];
 	int count;
 
-	spin_lock(&state->quota_spinlock);
+	spin_lock(&quota_spinlock);
 	count = quota->message_use_count;
 	if (count > 0)
 		quota->message_use_count = count - 1;
-	spin_unlock(&state->quota_spinlock);
+	spin_unlock(&quota_spinlock);
 
 	if (count == quota->message_quota) {
 		/*
@@ -746,11 +747,11 @@ process_free_data_message(struct vchiq_state *state, u32 *service_found,
 		/* Set the found bit for this service */
 		BITSET_SET(service_found, port);
 
-		spin_lock(&state->quota_spinlock);
+		spin_lock(&quota_spinlock);
 		count = quota->slot_use_count;
 		if (count > 0)
 			quota->slot_use_count = count - 1;
-		spin_unlock(&state->quota_spinlock);
+		spin_unlock(&quota_spinlock);
 
 		if (count > 0) {
 			/*
@@ -836,11 +837,11 @@ process_free_queue(struct vchiq_state *state, u32 *service_found,
 		if (data_found) {
 			int count;
 
-			spin_lock(&state->quota_spinlock);
+			spin_lock(&quota_spinlock);
 			count = state->data_use_count;
 			if (count > 0)
 				state->data_use_count = count - 1;
-			spin_unlock(&state->quota_spinlock);
+			spin_unlock(&quota_spinlock);
 			if (count == state->data_quota)
 				complete(&state->data_quota_event);
 		}
@@ -939,7 +940,7 @@ queue_message(struct vchiq_state *state, struct vchiq_service *service,
 
 		quota = &state->service_quotas[service->localport];
 
-		spin_lock(&state->quota_spinlock);
+		spin_lock(&quota_spinlock);
 
 		/*
 		 * Ensure this service doesn't use more than its quota of
@@ -954,14 +955,14 @@ queue_message(struct vchiq_state *state, struct vchiq_service *service,
 		while ((tx_end_index != state->previous_data_index) &&
 		       (state->data_use_count == state->data_quota)) {
 			VCHIQ_STATS_INC(state, data_stalls);
-			spin_unlock(&state->quota_spinlock);
+			spin_unlock(&quota_spinlock);
 			mutex_unlock(&state->slot_mutex);
 
 			if (wait_for_completion_interruptible(&state->data_quota_event))
 				return -EAGAIN;
 
 			mutex_lock(&state->slot_mutex);
-			spin_lock(&state->quota_spinlock);
+			spin_lock(&quota_spinlock);
 			tx_end_index = SLOT_QUEUE_INDEX_FROM_POS(state->local_tx_pos + stride - 1);
 			if ((tx_end_index == state->previous_data_index) ||
 			    (state->data_use_count < state->data_quota)) {
@@ -974,7 +975,7 @@ queue_message(struct vchiq_state *state, struct vchiq_service *service,
 		while ((quota->message_use_count == quota->message_quota) ||
 		       ((tx_end_index != quota->previous_tx_index) &&
 			(quota->slot_use_count == quota->slot_quota))) {
-			spin_unlock(&state->quota_spinlock);
+			spin_unlock(&quota_spinlock);
 			dev_dbg(state->dev,
 				"core: %d: qm:%d %s,%zx - quota stall (msg %d, slot %d)\n",
 				state->id, service->localport, msg_type_str(type), size,
@@ -992,11 +993,11 @@ queue_message(struct vchiq_state *state, struct vchiq_service *service,
 				mutex_unlock(&state->slot_mutex);
 				return -EHOSTDOWN;
 			}
-			spin_lock(&state->quota_spinlock);
+			spin_lock(&quota_spinlock);
 			tx_end_index = SLOT_QUEUE_INDEX_FROM_POS(state->local_tx_pos + stride - 1);
 		}
 
-		spin_unlock(&state->quota_spinlock);
+		spin_unlock(&quota_spinlock);
 	}
 
 	header = reserve_space(state, stride, flags & QMFLAGS_IS_BLOCKING);
@@ -1039,7 +1040,7 @@ queue_message(struct vchiq_state *state, struct vchiq_service *service,
 				   header->data,
 				   min_t(size_t, 16, callback_result));
 
-		spin_lock(&state->quota_spinlock);
+		spin_lock(&quota_spinlock);
 		quota->message_use_count++;
 
 		tx_end_index =
@@ -1065,7 +1066,7 @@ queue_message(struct vchiq_state *state, struct vchiq_service *service,
 			slot_use_count = 0;
 		}
 
-		spin_unlock(&state->quota_spinlock);
+		spin_unlock(&quota_spinlock);
 
 		if (slot_use_count)
 			dev_dbg(state->dev, "core: %d: qm:%d %s,%zx - slot_use->%d (hdr %p)\n",
@@ -1123,7 +1124,7 @@ queue_message(struct vchiq_state *state, struct vchiq_service *service,
 	if (!(flags & QMFLAGS_NO_MUTEX_UNLOCK))
 		mutex_unlock(&state->slot_mutex);
 
-	remote_event_signal(state, &state->remote->trigger);
+	remote_event_signal(&state->remote->trigger);
 
 	return 0;
 }
@@ -1191,6 +1192,7 @@ queue_message_sync(struct vchiq_state *state, struct vchiq_service *service,
 	header->size = size;
 	header->msgid = msgid;
 
+
 	svc_fourcc = service ? service->base.fourcc
 			     : VCHIQ_MAKE_FOURCC('?', '?', '?', '?');
 
@@ -1200,7 +1202,7 @@ queue_message_sync(struct vchiq_state *state, struct vchiq_service *service,
 		&svc_fourcc, VCHIQ_MSG_SRCPORT(msgid),
 		VCHIQ_MSG_DSTPORT(msgid), size);
 
-	remote_event_signal(state, &state->remote->sync_trigger);
+	remote_event_signal(&state->remote->sync_trigger);
 
 	if (VCHIQ_MSG_TYPE(msgid) != VCHIQ_MSG_PAUSE)
 		mutex_unlock(&state->sync_mutex);
@@ -1258,7 +1260,7 @@ release_slot(struct vchiq_state *state, struct vchiq_slot_info *slot_info,
 		 * A write barrier is necessary, but remote_event_signal
 		 * contains one.
 		 */
-		remote_event_signal(state, &state->remote->recycle);
+		remote_event_signal(&state->remote->recycle);
 	}
 
 	mutex_unlock(&state->recycle_mutex);
@@ -1320,13 +1322,13 @@ notify_bulks(struct vchiq_service *service, struct vchiq_bulk_queue *queue,
 			if (bulk->mode == VCHIQ_BULK_MODE_BLOCKING) {
 				struct bulk_waiter *waiter;
 
-				spin_lock(&service->state->bulk_waiter_spinlock);
+				spin_lock(&bulk_waiter_spinlock);
 				waiter = bulk->userdata;
 				if (waiter) {
 					waiter->actual = bulk->actual;
 					complete(&waiter->event);
 				}
-				spin_unlock(&service->state->bulk_waiter_spinlock);
+				spin_unlock(&bulk_waiter_spinlock);
 			} else if (bulk->mode == VCHIQ_BULK_MODE_CALLBACK) {
 				enum vchiq_reason reason =
 						get_bulk_reason(bulk);
@@ -1616,6 +1618,7 @@ parse_message(struct vchiq_state *state, struct vchiq_header *header)
 		break;
 	}
 
+
 	svc_fourcc = service ? service->base.fourcc
 			     : VCHIQ_MAKE_FOURCC('?', '?', '?', '?');
 
@@ -1732,9 +1735,10 @@ parse_message(struct vchiq_state *state, struct vchiq_header *header)
 				break;
 			}
 			if (queue->process != queue->remote_insert) {
-				dev_err(state->dev, "%s: p %x != ri %x\n",
-					__func__, queue->process,
-					queue->remote_insert);
+				pr_err("%s: p %x != ri %x\n",
+				       __func__,
+				       queue->process,
+				       queue->remote_insert);
 				mutex_unlock(&service->bulk_mutex);
 				goto bail_not_ready;
 			}
@@ -2165,10 +2169,6 @@ vchiq_init_state(struct vchiq_state *state, struct vchiq_slot_zero *slot_zero, s
 	mutex_init(&state->sync_mutex);
 	mutex_init(&state->bulk_transfer_mutex);
 
-	spin_lock_init(&state->msg_queue_spinlock);
-	spin_lock_init(&state->bulk_waiter_spinlock);
-	spin_lock_init(&state->quota_spinlock);
-
 	init_completion(&state->slot_available_event);
 	init_completion(&state->slot_remove_event);
 	init_completion(&state->data_quota_event);
@@ -2177,7 +2177,6 @@ vchiq_init_state(struct vchiq_state *state, struct vchiq_slot_zero *slot_zero, s
 
 	for (i = 0; i < VCHIQ_MAX_SERVICES; i++) {
 		struct vchiq_service_quota *quota = &state->service_quotas[i];
-
 		init_completion(&quota->quota_event);
 	}
 
@@ -3241,7 +3240,7 @@ static void
 release_message_sync(struct vchiq_state *state, struct vchiq_header *header)
 {
 	header->msgid = VCHIQ_MSGID_PADDING;
-	remote_event_signal(state, &state->remote->sync_release);
+	remote_event_signal(&state->remote->sync_release);
 }
 
 int
@@ -3505,7 +3504,7 @@ void vchiq_dump_state(struct seq_file *f, struct vchiq_state *state)
 
 	vchiq_dump_shared_state(f, state, state->remote, "Remote");
 
-	vchiq_dump_platform_instances(state, f);
+	vchiq_dump_platform_instances(f);
 
 	for (i = 0; i < state->unused_service; i++) {
 		struct vchiq_service *service = find_service_by_port(state, i);

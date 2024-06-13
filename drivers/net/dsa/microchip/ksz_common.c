@@ -24,12 +24,10 @@
 #include <linux/of_net.h>
 #include <linux/micrel_phy.h>
 #include <net/dsa.h>
-#include <net/ieee8021q.h>
 #include <net/pkt_cls.h>
 #include <net/switchdev.h>
 
 #include "ksz_common.h"
-#include "ksz_dcb.h"
 #include "ksz_ptp.h"
 #include "ksz8.h"
 #include "ksz9477.h"
@@ -255,28 +253,6 @@ static const struct ksz_drive_strength ksz8830_drive_strengths[] = {
 	{ KSZ8873_DRIVE_STRENGTH_16MA, 16000 },
 };
 
-static void ksz8830_phylink_mac_config(struct phylink_config *config,
-				       unsigned int mode,
-				       const struct phylink_link_state *state);
-static void ksz_phylink_mac_config(struct phylink_config *config,
-				   unsigned int mode,
-				   const struct phylink_link_state *state);
-static void ksz_phylink_mac_link_down(struct phylink_config *config,
-				      unsigned int mode,
-				      phy_interface_t interface);
-
-static const struct phylink_mac_ops ksz8830_phylink_mac_ops = {
-	.mac_config	= ksz8830_phylink_mac_config,
-	.mac_link_down	= ksz_phylink_mac_link_down,
-	.mac_link_up	= ksz8_phylink_mac_link_up,
-};
-
-static const struct phylink_mac_ops ksz8_phylink_mac_ops = {
-	.mac_config	= ksz_phylink_mac_config,
-	.mac_link_down	= ksz_phylink_mac_link_down,
-	.mac_link_up	= ksz8_phylink_mac_link_up,
-};
-
 static const struct ksz_dev_ops ksz8_dev_ops = {
 	.setup = ksz8_setup,
 	.get_port_addr = ksz8_get_port_addr,
@@ -301,6 +277,7 @@ static const struct ksz_dev_ops ksz8_dev_ops = {
 	.mirror_add = ksz8_port_mirror_add,
 	.mirror_del = ksz8_port_mirror_del,
 	.get_caps = ksz8_get_caps,
+	.phylink_mac_link_up = ksz8_phylink_mac_link_up,
 	.config_cpu_port = ksz8_config_cpu_port,
 	.enable_stp_addr = ksz8_enable_stp_addr,
 	.reset = ksz8_reset_switch,
@@ -309,18 +286,12 @@ static const struct ksz_dev_ops ksz8_dev_ops = {
 	.change_mtu = ksz8_change_mtu,
 };
 
-static void ksz9477_phylink_mac_link_up(struct phylink_config *config,
-					struct phy_device *phydev,
+static void ksz9477_phylink_mac_link_up(struct ksz_device *dev, int port,
 					unsigned int mode,
 					phy_interface_t interface,
-					int speed, int duplex, bool tx_pause,
+					struct phy_device *phydev, int speed,
+					int duplex, bool tx_pause,
 					bool rx_pause);
-
-static const struct phylink_mac_ops ksz9477_phylink_mac_ops = {
-	.mac_config	= ksz_phylink_mac_config,
-	.mac_link_down	= ksz_phylink_mac_link_down,
-	.mac_link_up	= ksz9477_phylink_mac_link_up,
-};
 
 static const struct ksz_dev_ops ksz9477_dev_ops = {
 	.setup = ksz9477_setup,
@@ -348,6 +319,7 @@ static const struct ksz_dev_ops ksz9477_dev_ops = {
 	.mdb_add = ksz9477_mdb_add,
 	.mdb_del = ksz9477_mdb_del,
 	.change_mtu = ksz9477_change_mtu,
+	.phylink_mac_link_up = ksz9477_phylink_mac_link_up,
 	.get_wol = ksz9477_get_wol,
 	.set_wol = ksz9477_set_wol,
 	.wol_pre_shutdown = ksz9477_wol_pre_shutdown,
@@ -357,12 +329,6 @@ static const struct ksz_dev_ops ksz9477_dev_ops = {
 	.reset = ksz9477_reset_switch,
 	.init = ksz9477_switch_init,
 	.exit = ksz9477_switch_exit,
-};
-
-static const struct phylink_mac_ops lan937x_phylink_mac_ops = {
-	.mac_config	= ksz_phylink_mac_config,
-	.mac_link_down	= ksz_phylink_mac_link_down,
-	.mac_link_up	= ksz9477_phylink_mac_link_up,
 };
 
 static const struct ksz_dev_ops lan937x_dev_ops = {
@@ -393,6 +359,7 @@ static const struct ksz_dev_ops lan937x_dev_ops = {
 	.mdb_add = ksz9477_mdb_add,
 	.mdb_del = ksz9477_mdb_del,
 	.change_mtu = lan937x_change_mtu,
+	.phylink_mac_link_up = ksz9477_phylink_mac_link_up,
 	.config_cpu_port = lan937x_config_cpu_port,
 	.tc_cbs_set_cinc = lan937x_tc_cbs_set_cinc,
 	.enable_stp_addr = ksz9477_enable_stp_addr,
@@ -1227,10 +1194,9 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 3,		/* total port count */
 		.port_nirqs = 3,
 		.num_tx_queues = 4,
-		.num_ipms = 8,
 		.tc_cbs_supported = true,
+		.tc_ets_supported = true,
 		.ops = &ksz9477_dev_ops,
-		.phylink_mac_ops = &ksz9477_phylink_mac_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -1257,9 +1223,7 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.cpu_ports = 0x10,	/* can be configured as cpu port */
 		.port_cnt = 5,		/* total cpu and user ports */
 		.num_tx_queues = 4,
-		.num_ipms = 4,
 		.ops = &ksz8_dev_ops,
-		.phylink_mac_ops = &ksz8_phylink_mac_ops,
 		.ksz87xx_eee_link_erratum = true,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
@@ -1298,9 +1262,7 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.cpu_ports = 0x10,	/* can be configured as cpu port */
 		.port_cnt = 5,		/* total cpu and user ports */
 		.num_tx_queues = 4,
-		.num_ipms = 4,
 		.ops = &ksz8_dev_ops,
-		.phylink_mac_ops = &ksz8_phylink_mac_ops,
 		.ksz87xx_eee_link_erratum = true,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
@@ -1325,9 +1287,7 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.cpu_ports = 0x10,	/* can be configured as cpu port */
 		.port_cnt = 5,		/* total cpu and user ports */
 		.num_tx_queues = 4,
-		.num_ipms = 4,
 		.ops = &ksz8_dev_ops,
-		.phylink_mac_ops = &ksz8_phylink_mac_ops,
 		.ksz87xx_eee_link_erratum = true,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
@@ -1352,9 +1312,7 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.cpu_ports = 0x4,	/* can be configured as cpu port */
 		.port_cnt = 3,
 		.num_tx_queues = 4,
-		.num_ipms = 4,
 		.ops = &ksz8_dev_ops,
-		.phylink_mac_ops = &ksz8830_phylink_mac_ops,
 		.mib_names = ksz88xx_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz88xx_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -1378,10 +1336,9 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 7,		/* total physical port count */
 		.port_nirqs = 4,
 		.num_tx_queues = 4,
-		.num_ipms = 8,
 		.tc_cbs_supported = true,
+		.tc_ets_supported = true,
 		.ops = &ksz9477_dev_ops,
-		.phylink_mac_ops = &ksz9477_phylink_mac_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -1413,9 +1370,7 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 6,		/* total physical port count */
 		.port_nirqs = 2,
 		.num_tx_queues = 4,
-		.num_ipms = 8,
 		.ops = &ksz9477_dev_ops,
-		.phylink_mac_ops = &ksz9477_phylink_mac_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -1447,9 +1402,7 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 7,		/* total physical port count */
 		.port_nirqs = 2,
 		.num_tx_queues = 4,
-		.num_ipms = 8,
 		.ops = &ksz9477_dev_ops,
-		.phylink_mac_ops = &ksz9477_phylink_mac_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -1479,9 +1432,7 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 3,		/* total port count */
 		.port_nirqs = 2,
 		.num_tx_queues = 4,
-		.num_ipms = 8,
 		.ops = &ksz9477_dev_ops,
-		.phylink_mac_ops = &ksz9477_phylink_mac_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -1507,10 +1458,9 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 3,		/* total port count */
 		.port_nirqs = 3,
 		.num_tx_queues = 4,
-		.num_ipms = 8,
 		.tc_cbs_supported = true,
+		.tc_ets_supported = true,
 		.ops = &ksz9477_dev_ops,
-		.phylink_mac_ops = &ksz9477_phylink_mac_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -1536,10 +1486,9 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 7,		/* total port count */
 		.port_nirqs = 3,
 		.num_tx_queues = 4,
-		.num_ipms = 8,
 		.tc_cbs_supported = true,
+		.tc_ets_supported = true,
 		.ops = &ksz9477_dev_ops,
-		.phylink_mac_ops = &ksz9477_phylink_mac_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -1570,8 +1519,8 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 7,		/* total physical port count */
 		.port_nirqs = 3,
 		.num_tx_queues = 4,
-		.num_ipms = 8,
 		.tc_cbs_supported = true,
+		.tc_ets_supported = true,
 		.ops = &ksz9477_dev_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
@@ -1602,10 +1551,9 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 5,		/* total physical port count */
 		.port_nirqs = 6,
 		.num_tx_queues = 8,
-		.num_ipms = 8,
 		.tc_cbs_supported = true,
+		.tc_ets_supported = true,
 		.ops = &lan937x_dev_ops,
-		.phylink_mac_ops = &lan937x_phylink_mac_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -1630,10 +1578,9 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 6,		/* total physical port count */
 		.port_nirqs = 6,
 		.num_tx_queues = 8,
-		.num_ipms = 8,
 		.tc_cbs_supported = true,
+		.tc_ets_supported = true,
 		.ops = &lan937x_dev_ops,
-		.phylink_mac_ops = &lan937x_phylink_mac_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -1658,10 +1605,9 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 8,		/* total physical port count */
 		.port_nirqs = 6,
 		.num_tx_queues = 8,
-		.num_ipms = 8,
 		.tc_cbs_supported = true,
+		.tc_ets_supported = true,
 		.ops = &lan937x_dev_ops,
-		.phylink_mac_ops = &lan937x_phylink_mac_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -1690,10 +1636,9 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 5,		/* total physical port count */
 		.port_nirqs = 6,
 		.num_tx_queues = 8,
-		.num_ipms = 8,
 		.tc_cbs_supported = true,
+		.tc_ets_supported = true,
 		.ops = &lan937x_dev_ops,
-		.phylink_mac_ops = &lan937x_phylink_mac_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -1722,10 +1667,9 @@ const struct ksz_chip_data ksz_switch_chips[] = {
 		.port_cnt = 8,		/* total physical port count */
 		.port_nirqs = 6,
 		.num_tx_queues = 8,
-		.num_ipms = 8,
 		.tc_cbs_supported = true,
+		.tc_ets_supported = true,
 		.ops = &lan937x_dev_ops,
-		.phylink_mac_ops = &lan937x_phylink_mac_ops,
 		.mib_names = ksz9477_mib_names,
 		.mib_cnt = ARRAY_SIZE(ksz9477_mib_names),
 		.reg_mib_cnt = MIB_COUNTER_NUM,
@@ -2360,7 +2304,6 @@ static int ksz_setup(struct dsa_switch *ds)
 	ksz_init_mib_timer(dev);
 
 	ds->configure_vlan_while_not_filtering = false;
-	ds->dscp_prio_mapping_is_global = true;
 
 	if (dev->dev_ops->setup) {
 		ret = dev->dev_ops->setup(ds);
@@ -2403,10 +2346,6 @@ static int ksz_setup(struct dsa_switch *ds)
 		dev_err(dev->dev, "failed to register the mdio");
 		goto out_ptp_clock_unregister;
 	}
-
-	ret = ksz_dcb_init(dev);
-	if (ret)
-		goto out_ptp_clock_unregister;
 
 	/* start switch */
 	regmap_update_bits(ksz_regmap_8(dev), regs[S_START_CTRL],
@@ -2584,15 +2523,14 @@ static u32 ksz_get_phy_flags(struct dsa_switch *ds, int port)
 	return 0;
 }
 
-static void ksz_phylink_mac_link_down(struct phylink_config *config,
-				      unsigned int mode,
-				      phy_interface_t interface)
+static void ksz_mac_link_down(struct dsa_switch *ds, int port,
+			      unsigned int mode, phy_interface_t interface)
 {
-	struct dsa_port *dp = dsa_phylink_to_port(config);
-	struct ksz_device *dev = dp->ds->priv;
+	struct ksz_device *dev = ds->priv;
+	struct ksz_port *p = &dev->ports[port];
 
 	/* Read all MIB counters when the link is going down. */
-	dev->ports[dp->index].read = true;
+	p->read = true;
 	/* timer started */
 	if (dev->mib_read_interval)
 		schedule_delayed_work(&dev->mib_read, 0);
@@ -2722,33 +2660,9 @@ static int ksz_port_mdb_del(struct dsa_switch *ds, int port,
 	return dev->dev_ops->mdb_del(dev, port, mdb, db);
 }
 
-static int ksz9477_set_default_prio_queue_mapping(struct ksz_device *dev,
-						  int port)
-{
-	u32 queue_map = 0;
-	int ipm;
-
-	for (ipm = 0; ipm < dev->info->num_ipms; ipm++) {
-		int queue;
-
-		/* Traffic Type (TT) is corresponding to the Internal Priority
-		 * Map (IPM) in the switch. Traffic Class (TC) is
-		 * corresponding to the queue in the switch.
-		 */
-		queue = ieee8021q_tt_to_tc(ipm, dev->info->num_tx_queues);
-		if (queue < 0)
-			return queue;
-
-		queue_map |= queue << (ipm * KSZ9477_PORT_TC_MAP_S);
-	}
-
-	return ksz_pwrite32(dev, port, KSZ9477_PORT_MRI_TC_MAP__4, queue_map);
-}
-
 static int ksz_port_setup(struct dsa_switch *ds, int port)
 {
 	struct ksz_device *dev = ds->priv;
-	int ret;
 
 	if (!dsa_is_user_port(ds, port))
 		return 0;
@@ -2756,17 +2670,11 @@ static int ksz_port_setup(struct dsa_switch *ds, int port)
 	/* setup user port */
 	dev->dev_ops->port_setup(dev, port, false);
 
-	if (!is_ksz8(dev)) {
-		ret = ksz9477_set_default_prio_queue_mapping(dev, port);
-		if (ret)
-			return ret;
-	}
-
 	/* port_stp_state_set() will be called after to enable the port so
 	 * there is no need to do anything.
 	 */
 
-	return ksz_dcb_init_port(dev, port);
+	return 0;
 }
 
 void ksz_port_stp_state_set(struct dsa_switch *ds, int port, u8 state)
@@ -3157,23 +3065,16 @@ phy_interface_t ksz_get_xmii(struct ksz_device *dev, int port, bool gbit)
 	return interface;
 }
 
-static void ksz8830_phylink_mac_config(struct phylink_config *config,
-				       unsigned int mode,
-				       const struct phylink_link_state *state)
-{
-	struct dsa_port *dp = dsa_phylink_to_port(config);
-	struct ksz_device *dev = dp->ds->priv;
-
-	dev->ports[dp->index].manual_flow = !(state->pause & MLO_PAUSE_AN);
-}
-
-static void ksz_phylink_mac_config(struct phylink_config *config,
+static void ksz_phylink_mac_config(struct dsa_switch *ds, int port,
 				   unsigned int mode,
 				   const struct phylink_link_state *state)
 {
-	struct dsa_port *dp = dsa_phylink_to_port(config);
-	struct ksz_device *dev = dp->ds->priv;
-	int port = dp->index;
+	struct ksz_device *dev = ds->priv;
+
+	if (ksz_is_ksz88x3(dev)) {
+		dev->ports[port].manual_flow = !(state->pause & MLO_PAUSE_AN);
+		return;
+	}
 
 	/* Internal PHYs */
 	if (dev->info->internal_phy[port])
@@ -3185,6 +3086,9 @@ static void ksz_phylink_mac_config(struct phylink_config *config,
 	}
 
 	ksz_set_xmii(dev, port, state->interface);
+
+	if (dev->dev_ops->phylink_mac_config)
+		dev->dev_ops->phylink_mac_config(dev, port, mode, state);
 
 	if (dev->dev_ops->setup_rgmii_delay)
 		dev->dev_ops->setup_rgmii_delay(dev, port);
@@ -3283,16 +3187,13 @@ static void ksz_duplex_flowctrl(struct ksz_device *dev, int port, int duplex,
 	ksz_prmw8(dev, port, regs[P_XMII_CTRL_0], mask, val);
 }
 
-static void ksz9477_phylink_mac_link_up(struct phylink_config *config,
-					struct phy_device *phydev,
+static void ksz9477_phylink_mac_link_up(struct ksz_device *dev, int port,
 					unsigned int mode,
 					phy_interface_t interface,
-					int speed, int duplex, bool tx_pause,
+					struct phy_device *phydev, int speed,
+					int duplex, bool tx_pause,
 					bool rx_pause)
 {
-	struct dsa_port *dp = dsa_phylink_to_port(config);
-	struct ksz_device *dev = dp->ds->priv;
-	int port = dp->index;
 	struct ksz_port *p;
 
 	p = &dev->ports[port];
@@ -3306,6 +3207,18 @@ static void ksz9477_phylink_mac_link_up(struct phylink_config *config,
 	ksz_port_set_xmii_speed(dev, port, speed);
 
 	ksz_duplex_flowctrl(dev, port, duplex, tx_pause, rx_pause);
+}
+
+static void ksz_phylink_mac_link_up(struct dsa_switch *ds, int port,
+				    unsigned int mode,
+				    phy_interface_t interface,
+				    struct phy_device *phydev, int speed,
+				    int duplex, bool tx_pause, bool rx_pause)
+{
+	struct ksz_device *dev = ds->priv;
+
+	dev->dev_ops->phylink_mac_link_up(dev, port, mode, interface, phydev,
+					  speed, duplex, tx_pause, rx_pause);
 }
 
 static int ksz_switch_detect(struct ksz_device *dev)
@@ -3609,7 +3522,7 @@ static int ksz_tc_ets_add(struct ksz_device *dev, int port,
 	for (tc_prio = 0; tc_prio < ARRAY_SIZE(p->priomap); tc_prio++) {
 		int queue;
 
-		if (tc_prio >= dev->info->num_ipms)
+		if (tc_prio > KSZ9477_MAX_TC_PRIO)
 			break;
 
 		queue = ksz_ets_band_to_queue(p, p->priomap[tc_prio]);
@@ -3621,7 +3534,8 @@ static int ksz_tc_ets_add(struct ksz_device *dev, int port,
 
 static int ksz_tc_ets_del(struct ksz_device *dev, int port)
 {
-	int ret, queue;
+	int ret, queue, tc_prio, s;
+	u32 queue_map = 0;
 
 	/* To restore the default chip configuration, set all queues to use the
 	 * WRR scheduler with a weight of 1.
@@ -3633,10 +3547,31 @@ static int ksz_tc_ets_del(struct ksz_device *dev, int port)
 			return ret;
 	}
 
+	switch (dev->info->num_tx_queues) {
+	case 2:
+		s = 2;
+		break;
+	case 4:
+		s = 1;
+		break;
+	case 8:
+		s = 0;
+		break;
+	default:
+		return -EINVAL;
+	}
+
 	/* Revert the queue mapping for TC-priority to its default setting on
 	 * the chip.
 	 */
-	return ksz9477_set_default_prio_queue_mapping(dev, port);
+	for (tc_prio = 0; tc_prio <= KSZ9477_MAX_TC_PRIO; tc_prio++) {
+		int queue;
+
+		queue = tc_prio >> s;
+		queue_map |= queue << (tc_prio * KSZ9477_PORT_TC_MAP_S);
+	}
+
+	return ksz_pwrite32(dev, port, KSZ9477_PORT_MRI_TC_MAP__4, queue_map);
 }
 
 static int ksz_tc_ets_validate(struct ksz_device *dev, int port,
@@ -3681,7 +3616,7 @@ static int ksz_tc_setup_qdisc_ets(struct dsa_switch *ds, int port,
 	struct ksz_device *dev = ds->priv;
 	int ret;
 
-	if (is_ksz8(dev))
+	if (!dev->info->tc_ets_supported)
 		return -EOPNOTSUPP;
 
 	if (qopt->parent != TC_H_ROOT) {
@@ -3946,6 +3881,9 @@ static const struct dsa_switch_ops ksz_switch_ops = {
 	.phy_read		= ksz_phy_read16,
 	.phy_write		= ksz_phy_write16,
 	.phylink_get_caps	= ksz_phylink_get_caps,
+	.phylink_mac_config	= ksz_phylink_mac_config,
+	.phylink_mac_link_up	= ksz_phylink_mac_link_up,
+	.phylink_mac_link_down	= ksz_mac_link_down,
 	.port_setup		= ksz_port_setup,
 	.set_ageing_time	= ksz_set_ageing_time,
 	.get_strings		= ksz_get_strings,
@@ -3987,13 +3925,6 @@ static const struct dsa_switch_ops ksz_switch_ops = {
 	.port_setup_tc		= ksz_setup_tc,
 	.get_mac_eee		= ksz_get_mac_eee,
 	.set_mac_eee		= ksz_set_mac_eee,
-	.port_get_default_prio	= ksz_port_get_default_prio,
-	.port_set_default_prio	= ksz_port_set_default_prio,
-	.port_get_dscp_prio	= ksz_port_get_dscp_prio,
-	.port_add_dscp_prio	= ksz_port_add_dscp_prio,
-	.port_del_dscp_prio	= ksz_port_del_dscp_prio,
-	.port_get_apptrust	= ksz_port_get_apptrust,
-	.port_set_apptrust	= ksz_port_set_apptrust,
 };
 
 struct ksz_device *ksz_switch_alloc(struct device *base, void *priv)
@@ -4396,9 +4327,6 @@ int ksz_switch_register(struct ksz_device *dev)
 
 	/* set the real number of ports */
 	dev->ds->num_ports = dev->info->port_cnt;
-
-	/* set the phylink ops */
-	dev->ds->phylink_mac_ops = dev->info->phylink_mac_ops;
 
 	/* Host port interface will be self detected, or specifically set in
 	 * device tree.

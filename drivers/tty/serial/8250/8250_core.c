@@ -15,7 +15,6 @@
  */
 
 #include <linux/acpi.h>
-#include <linux/cleanup.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/ioport.h>
@@ -41,8 +40,6 @@
 #endif
 
 #include <asm/irq.h>
-
-#include "../serial_base.h"	/* For serial_base_add_isa_preferred_console() */
 
 #include "8250.h"
 
@@ -283,8 +280,7 @@ static void serial8250_backup_timeout(struct timer_list *t)
 	 */
 	lsr = serial_lsr_in(up);
 	if ((iir & UART_IIR_NO_INT) && (up->ier & UART_IER_THRI) &&
-	    (!kfifo_is_empty(&up->port.state->port.xmit_fifo) ||
-	     up->port.x_char) &&
+	    (!uart_circ_empty(&up->port.state->xmit) || up->port.x_char) &&
 	    (lsr & UART_LSR_THRE)) {
 		iir &= ~(UART_IIR_ID | UART_IIR_NO_INT);
 		iir |= UART_IIR_THRI;
@@ -512,6 +508,10 @@ static struct uart_8250_port *serial8250_setup_port(int index)
 
 	up->ops = &univ8250_driver_ops;
 
+	if (IS_ENABLED(CONFIG_ALPHA_JENSEN) ||
+	    (IS_ENABLED(CONFIG_ALPHA_GENERIC) && alpha_jensen()))
+		up->port.set_mctrl = alpha_jensen_set_mctrl;
+
 	serial8250_set_defaults(up);
 
 	return up;
@@ -563,8 +563,6 @@ static void __init serial8250_isa_init_ports(void)
 		port->irqflags |= irqflag;
 		if (serial8250_isa_config != NULL)
 			serial8250_isa_config(i, &up->port, &up->capabilities);
-
-		serial_base_add_isa_preferred_console(serial8250_reg.dev_name, i);
 	}
 }
 

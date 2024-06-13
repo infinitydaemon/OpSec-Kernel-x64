@@ -2796,12 +2796,10 @@ int snd_soc_component_initialize(struct snd_soc_component *component,
 	INIT_LIST_HEAD(&component->list);
 	mutex_init(&component->io_mutex);
 
+	component->name = fmt_single_name(dev, &component->id);
 	if (!component->name) {
-		component->name = fmt_single_name(dev, &component->id);
-		if (!component->name) {
-			dev_err(dev, "ASoC: Failed to allocate name\n");
-			return -ENOMEM;
-		}
+		dev_err(dev, "ASoC: Failed to allocate name\n");
+		return -ENOMEM;
 	}
 
 	component->dev		= dev;

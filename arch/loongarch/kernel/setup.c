@@ -282,7 +282,7 @@ static void __init fdt_setup(void)
 		return;
 
 	/* Prefer to use built-in dtb, checking its legality first. */
-	if (IS_ENABLED(CONFIG_BUILTIN_DTB) && !fdt_check_header(__dtb_start))
+	if (!fdt_check_header(__dtb_start))
 		fdt_pointer = __dtb_start;
 	else
 		fdt_pointer = efi_fdt_pointer(); /* Fallback to firmware dtb */
@@ -351,8 +351,10 @@ void __init platform_init(void)
 	arch_reserve_vmcore();
 	arch_reserve_crashkernel();
 
-#ifdef CONFIG_ACPI
+#ifdef CONFIG_ACPI_TABLE_UPGRADE
 	acpi_table_upgrade();
+#endif
+#ifdef CONFIG_ACPI
 	acpi_gbl_use_default_register_widths = false;
 	acpi_boot_table_init();
 #endif

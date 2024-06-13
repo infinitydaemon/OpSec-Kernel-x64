@@ -43,6 +43,4 @@ struct xe_lrc {
 	struct xe_hw_fence_ctx fence_ctx;
 };
 
-struct xe_lrc_snapshot;
-
 #endif

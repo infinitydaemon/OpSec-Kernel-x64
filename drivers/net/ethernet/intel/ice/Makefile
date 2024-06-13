@@ -5,7 +5,6 @@
 # Makefile for the Intel(R) Ethernet Connection E800 Series Linux Driver
 #
 
-subdir-ccflags-y += -I$(src)
 obj-$(CONFIG_ICE) += ice.o
 
 ice-y := ice_main.o	\
@@ -29,8 +28,7 @@ ice-y := ice_main.o	\
 	 ice_flex_pipe.o \
 	 ice_flow.o	\
 	 ice_idc.o	\
-	 devlink/devlink.o	\
-	 devlink/devlink_port.o \
+	 ice_devlink.o	\
 	 ice_ddp.o	\
 	 ice_fw_update.o \
 	 ice_lag.o	\
@@ -38,8 +36,7 @@ ice-y := ice_main.o	\
 	 ice_repr.o	\
 	 ice_tc_lib.o	\
 	 ice_fwlog.o	\
-	 ice_debugfs.o  \
-	 ice_adapter.o
+	 ice_debugfs.o
 ice-$(CONFIG_PCI_IOV) +=	\
 	ice_sriov.o		\
 	ice_virtchnl.o		\

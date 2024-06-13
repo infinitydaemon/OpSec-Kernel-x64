@@ -50,7 +50,7 @@ MODULE_PARM_DESC(slots, "Module names assigned to the slots.");
 static int module_slot_match(struct module *module, int idx)
 {
 	int match = 1;
-#ifdef CONFIG_MODULES
+#ifdef MODULE
 	const char *s1, *s2;
 
 	if (!module || !*module->name || !slots[idx])
@@ -77,7 +77,7 @@ static int module_slot_match(struct module *module, int idx)
 		if (!c1)
 			break;
 	}
-#endif /* CONFIG_MODULES */
+#endif /* MODULE */
 	return match;
 }
 
@@ -311,7 +311,9 @@ static int snd_card_init(struct snd_card *card, struct device *parent,
 	}
 	card->dev = parent;
 	card->number = idx;
-	WARN_ON(IS_MODULE(CONFIG_SND) && !module);
+#ifdef MODULE
+	WARN_ON(!module);
+#endif
 	card->module = module;
 	INIT_LIST_HEAD(&card->devices);
 	init_rwsem(&card->controls_rwsem);
@@ -553,7 +555,9 @@ void snd_card_disconnect(struct snd_card *card)
 		clear_bit(card->number, snd_cards_lock);
 	}
 
+#ifdef CONFIG_PM
 	snd_power_sync_ref(card);
+#endif
 }
 EXPORT_SYMBOL(snd_card_disconnect);
 
@@ -968,7 +972,7 @@ void snd_card_info_read_oss(struct snd_info_buffer *buffer)
 
 #endif
 
-#ifdef CONFIG_MODULES
+#ifdef MODULE
 static void snd_card_module_info_read(struct snd_info_entry *entry,
 				      struct snd_info_buffer *buffer)
 {
@@ -996,7 +1000,7 @@ int __init snd_card_info_init(void)
 	if (snd_info_register(entry) < 0)
 		return -ENOMEM; /* freed in error path */
 
-#ifdef CONFIG_MODULES
+#ifdef MODULE
 	entry = snd_info_create_module_entry(THIS_MODULE, "modules", NULL);
 	if (!entry)
 		return -ENOMEM;

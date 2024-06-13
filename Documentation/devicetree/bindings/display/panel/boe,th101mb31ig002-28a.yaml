@@ -18,9 +18,7 @@ properties:
         # BOE TH101MB31IG002-28A 10.1" WXGA TFT LCD panel
       - boe,th101mb31ig002-28a
 
-  reg:
-    maxItems: 1
-
+  reg: true
   backlight: true
   enable-gpios: true
   power-supply: true

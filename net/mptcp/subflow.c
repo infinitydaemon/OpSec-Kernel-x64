@@ -20,7 +20,6 @@
 #include <net/transp_v6.h>
 #endif
 #include <net/mptcp.h>
-
 #include "protocol.h"
 #include "mib.h"
 
@@ -151,10 +150,8 @@ static int subflow_check_req(struct request_sock *req,
 	/* no MPTCP if MD5SIG is enabled on this socket or we may run out of
 	 * TCP option space.
 	 */
-	if (rcu_access_pointer(tcp_sk(sk_listener)->md5sig_info)) {
-		subflow_add_reset_reason(skb, MPTCP_RST_EMPTCP);
+	if (rcu_access_pointer(tcp_sk(sk_listener)->md5sig_info))
 		return -EINVAL;
-	}
 #endif
 
 	mptcp_get_options(skb, &mp_opt);
@@ -222,7 +219,6 @@ again:
 				 ntohs(inet_sk((struct sock *)subflow_req->msk)->inet_sport));
 			if (!mptcp_pm_sport_in_anno_list(subflow_req->msk, sk_listener)) {
 				SUBFLOW_REQ_INC_STATS(req, MPTCP_MIB_MISMATCHPORTSYNRX);
-				subflow_add_reset_reason(skb, MPTCP_RST_EPROHIBIT);
 				return -EPERM;
 			}
 			SUBFLOW_REQ_INC_STATS(req, MPTCP_MIB_JOINPORTSYNRX);
@@ -231,12 +227,10 @@ again:
 		subflow_req_create_thmac(subflow_req);
 
 		if (unlikely(req->syncookie)) {
-			if (!mptcp_can_accept_new_subflow(subflow_req->msk)) {
-				subflow_add_reset_reason(skb, MPTCP_RST_EPROHIBIT);
+			if (mptcp_can_accept_new_subflow(subflow_req->msk))
+				subflow_init_req_cookie_join_save(subflow_req, skb);
+			else
 				return -EPERM;
-			}
-
-			subflow_init_req_cookie_join_save(subflow_req, skb);
 		}
 
 		pr_debug("token=%u, remote_nonce=%u msk=%p", subflow_req->token,
@@ -287,21 +281,10 @@ int mptcp_subflow_init_cookie_req(struct request_sock *req,
 }
 EXPORT_SYMBOL_GPL(mptcp_subflow_init_cookie_req);
 
-static enum sk_rst_reason mptcp_get_rst_reason(const struct sk_buff *skb)
-{
-	const struct mptcp_ext *mpext = mptcp_get_ext(skb);
-
-	if (!mpext)
-		return SK_RST_REASON_NOT_SPECIFIED;
-
-	return sk_rst_convert_mptcp_reason(mpext->reset_reason);
-}
-
 static struct dst_entry *subflow_v4_route_req(const struct sock *sk,
 					      struct sk_buff *skb,
 					      struct flowi *fl,
-					      struct request_sock *req,
-					      u32 tw_isn)
+					      struct request_sock *req)
 {
 	struct dst_entry *dst;
 	int err;
@@ -309,7 +292,7 @@ static struct dst_entry *subflow_v4_route_req(const struct sock *sk,
 	tcp_rsk(req)->is_mptcp = 1;
 	subflow_init_req(req, sk);
 
-	dst = tcp_request_sock_ipv4_ops.route_req(sk, skb, fl, req, tw_isn);
+	dst = tcp_request_sock_ipv4_ops.route_req(sk, skb, fl, req);
 	if (!dst)
 		return NULL;
 
@@ -319,8 +302,7 @@ static struct dst_entry *subflow_v4_route_req(const struct sock *sk,
 
 	dst_release(dst);
 	if (!req->syncookie)
-		tcp_request_sock_ops.send_reset(sk, skb,
-						mptcp_get_rst_reason(skb));
+		tcp_request_sock_ops.send_reset(sk, skb);
 	return NULL;
 }
 
@@ -369,8 +351,7 @@ static int subflow_v6_send_synack(const struct sock *sk, struct dst_entry *dst,
 static struct dst_entry *subflow_v6_route_req(const struct sock *sk,
 					      struct sk_buff *skb,
 					      struct flowi *fl,
-					      struct request_sock *req,
-					      u32 tw_isn)
+					      struct request_sock *req)
 {
 	struct dst_entry *dst;
 	int err;
@@ -378,7 +359,7 @@ static struct dst_entry *subflow_v6_route_req(const struct sock *sk,
 	tcp_rsk(req)->is_mptcp = 1;
 	subflow_init_req(req, sk);
 
-	dst = tcp_request_sock_ipv6_ops.route_req(sk, skb, fl, req, tw_isn);
+	dst = tcp_request_sock_ipv6_ops.route_req(sk, skb, fl, req);
 	if (!dst)
 		return NULL;
 
@@ -388,8 +369,7 @@ static struct dst_entry *subflow_v6_route_req(const struct sock *sk,
 
 	dst_release(dst);
 	if (!req->syncookie)
-		tcp6_request_sock_ops.send_reset(sk, skb,
-						 mptcp_get_rst_reason(skb));
+		tcp6_request_sock_ops.send_reset(sk, skb);
 	return NULL;
 }
 #endif
@@ -425,7 +405,7 @@ void mptcp_subflow_reset(struct sock *ssk)
 	/* must hold: tcp_done() could drop last reference on parent */
 	sock_hold(sk);
 
-	mptcp_send_active_reset_reason(ssk);
+	tcp_send_active_reset(ssk, GFP_ATOMIC);
 	tcp_done(ssk);
 	if (!test_and_set_bit(MPTCP_WORK_CLOSE_SUBFLOW, &mptcp_sk(sk)->flags))
 		mptcp_schedule_work(sk);
@@ -794,7 +774,6 @@ static struct sock *subflow_syn_recv_sock(const struct sock *sk,
 	struct mptcp_subflow_request_sock *subflow_req;
 	struct mptcp_options_received mp_opt;
 	bool fallback, fallback_is_fatal;
-	enum sk_rst_reason reason;
 	struct mptcp_sock *owner;
 	struct sock *child;
 
@@ -894,18 +873,13 @@ create_child:
 					 ntohs(inet_sk((struct sock *)owner)->inet_sport));
 				if (!mptcp_pm_sport_in_anno_list(owner, sk)) {
 					SUBFLOW_REQ_INC_STATS(req, MPTCP_MIB_MISMATCHPORTACKRX);
-					subflow_add_reset_reason(skb, MPTCP_RST_EPROHIBIT);
 					goto dispose_child;
 				}
 				SUBFLOW_REQ_INC_STATS(req, MPTCP_MIB_JOINPORTACKRX);
 			}
 
-			if (!mptcp_finish_join(child)) {
-				struct mptcp_subflow_context *subflow = mptcp_subflow_ctx(child);
-
-				subflow_add_reset_reason(skb, subflow->reset_reason);
+			if (!mptcp_finish_join(child))
 				goto dispose_child;
-			}
 
 			SUBFLOW_REQ_INC_STATS(req, MPTCP_MIB_JOINACKRX);
 			tcp_rsk(req)->drop_req = true;
@@ -913,7 +887,7 @@ create_child:
 	}
 
 	/* check for expected invariant - should never trigger, just help
-	 * catching earlier subtle bugs
+	 * catching eariler subtle bugs
 	 */
 	WARN_ON_ONCE(child && *own_req && tcp_sk(child)->is_mptcp &&
 		     (!mptcp_subflow_ctx(child) ||
@@ -925,8 +899,7 @@ dispose_child:
 	tcp_rsk(req)->drop_req = true;
 	inet_csk_prepare_for_destroy_sock(child);
 	tcp_done(child);
-	reason = mptcp_get_rst_reason(skb);
-	req->rsk_ops->send_reset(sk, skb, reason);
+	req->rsk_ops->send_reset(sk, skb);
 
 	/* The last child reference will be released by the caller */
 	return child;
@@ -1119,8 +1092,6 @@ static enum mapping_status get_mapping_status(struct sock *ssk,
 	}
 
 	if (mpext->data_fin == 1) {
-		u64 data_fin_seq;
-
 		if (data_len == 1) {
 			bool updated = mptcp_update_rcv_data_fin(msk, mpext->data_seq,
 								 mpext->dsn64);
@@ -1133,25 +1104,25 @@ static enum mapping_status get_mapping_status(struct sock *ssk,
 				 */
 				skb_ext_del(skb, SKB_EXT_MPTCP);
 				return MAPPING_OK;
+			} else {
+				if (updated)
+					mptcp_schedule_work((struct sock *)msk);
+
+				return MAPPING_DATA_FIN;
 			}
+		} else {
+			u64 data_fin_seq = mpext->data_seq + data_len - 1;
 
-			if (updated)
-				mptcp_schedule_work((struct sock *)msk);
+			/* If mpext->data_seq is a 32-bit value, data_fin_seq
+			 * must also be limited to 32 bits.
+			 */
+			if (!mpext->dsn64)
+				data_fin_seq &= GENMASK_ULL(31, 0);
 
-			return MAPPING_DATA_FIN;
+			mptcp_update_rcv_data_fin(msk, data_fin_seq, mpext->dsn64);
+			pr_debug("DATA_FIN with mapping seq=%llu dsn64=%d",
+				 data_fin_seq, mpext->dsn64);
 		}
-
-		data_fin_seq = mpext->data_seq + data_len - 1;
-
-		/* If mpext->data_seq is a 32-bit value, data_fin_seq must also
-		 * be limited to 32 bits.
-		 */
-		if (!mpext->dsn64)
-			data_fin_seq &= GENMASK_ULL(31, 0);
-
-		mptcp_update_rcv_data_fin(msk, data_fin_seq, mpext->dsn64);
-		pr_debug("DATA_FIN with mapping seq=%llu dsn64=%d",
-			 data_fin_seq, mpext->dsn64);
 
 		/* Adjust for DATA_FIN using 1 byte of sequence space */
 		data_len--;
@@ -1263,7 +1234,7 @@ static void mptcp_subflow_fail(struct mptcp_sock *msk, struct sock *ssk)
 	struct mptcp_subflow_context *subflow = mptcp_subflow_ctx(ssk);
 	unsigned long fail_tout;
 
-	/* graceful failure can happen only on the MPC subflow */
+	/* greceful failure can happen only on the MPC subflow */
 	if (WARN_ON_ONCE(ssk != READ_ONCE(msk->first)))
 		return;
 
@@ -1365,7 +1336,7 @@ reset:
 			tcp_set_state(ssk, TCP_CLOSE);
 			while ((skb = skb_peek(&ssk->sk_receive_queue)))
 				sk_eat_skb(ssk, skb);
-			mptcp_send_active_reset_reason(ssk);
+			tcp_send_active_reset(ssk, GFP_ATOMIC);
 			WRITE_ONCE(subflow->data_avail, false);
 			return false;
 		}

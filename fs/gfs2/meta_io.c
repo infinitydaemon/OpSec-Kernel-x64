@@ -32,14 +32,14 @@
 
 static int gfs2_aspace_writepage(struct page *page, struct writeback_control *wbc)
 {
-	struct folio *folio = page_folio(page);
 	struct buffer_head *bh, *head;
 	int nr_underway = 0;
 	blk_opf_t write_flags = REQ_META | REQ_PRIO | wbc_to_write_flags(wbc);
 
-	BUG_ON(!folio_test_locked(folio));
+	BUG_ON(!PageLocked(page));
+	BUG_ON(!page_has_buffers(page));
 
-	head = folio_buffers(folio);
+	head = page_buffers(page);
 	bh = head;
 
 	do {
@@ -55,7 +55,7 @@ static int gfs2_aspace_writepage(struct page *page, struct writeback_control *wb
 		if (wbc->sync_mode != WB_SYNC_NONE) {
 			lock_buffer(bh);
 		} else if (!trylock_buffer(bh)) {
-			folio_redirty_for_writepage(wbc, folio);
+			redirty_page_for_writepage(wbc, page);
 			continue;
 		}
 		if (test_clear_buffer_dirty(bh)) {
@@ -69,8 +69,8 @@ static int gfs2_aspace_writepage(struct page *page, struct writeback_control *wb
 	 * The page and its buffers are protected by PageWriteback(), so we can
 	 * drop the bh refcounts early.
 	 */
-	BUG_ON(folio_test_writeback(folio));
-	folio_start_writeback(folio);
+	BUG_ON(PageWriteback(page));
+	set_page_writeback(page);
 
 	do {
 		struct buffer_head *next = bh->b_this_page;
@@ -80,10 +80,10 @@ static int gfs2_aspace_writepage(struct page *page, struct writeback_control *wb
 		}
 		bh = next;
 	} while (bh != head);
-	folio_unlock(folio);
+	unlock_page(page);
 
 	if (nr_underway == 0)
-		folio_end_writeback(folio);
+		end_page_writeback(page);
 
 	return 0;
 }

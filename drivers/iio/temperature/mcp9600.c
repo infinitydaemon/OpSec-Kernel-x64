@@ -52,8 +52,7 @@ static int mcp9600_read(struct mcp9600_data *data,
 
 	if (ret < 0)
 		return ret;
-
-	*val = sign_extend32(ret, 15);
+	*val = ret;
 
 	return 0;
 }

@@ -140,11 +140,10 @@ struct dp83822_private {
 	u16 fx_sd_enable;
 	u8 cfg_dac_minus;
 	u8 cfg_dac_plus;
-	struct ethtool_wolinfo wol;
 };
 
-static int dp83822_config_wol(struct phy_device *phydev,
-			      struct ethtool_wolinfo *wol)
+static int dp83822_set_wol(struct phy_device *phydev,
+			   struct ethtool_wolinfo *wol)
 {
 	struct net_device *ndev = phydev->attached_dev;
 	u16 value;
@@ -198,23 +197,8 @@ static int dp83822_config_wol(struct phy_device *phydev,
 				     MII_DP83822_WOL_CFG, value);
 	} else {
 		return phy_clear_bits_mmd(phydev, DP83822_DEVADDR,
-					  MII_DP83822_WOL_CFG,
-					  DP83822_WOL_EN |
-					  DP83822_WOL_MAGIC_EN |
-					  DP83822_WOL_SECURE_ON);
+					  MII_DP83822_WOL_CFG, DP83822_WOL_EN);
 	}
-}
-
-static int dp83822_set_wol(struct phy_device *phydev,
-			   struct ethtool_wolinfo *wol)
-{
-	struct dp83822_private *dp83822 = phydev->priv;
-	int ret;
-
-	ret = dp83822_config_wol(phydev, wol);
-	if (!ret)
-		memcpy(&dp83822->wol, wol, sizeof(*wol));
-	return ret;
 }
 
 static void dp83822_get_wol(struct phy_device *phydev,
@@ -362,6 +346,13 @@ static irqreturn_t dp83822_handle_interrupt(struct phy_device *phydev)
 	return IRQ_HANDLED;
 }
 
+static int dp8382x_disable_wol(struct phy_device *phydev)
+{
+	return phy_clear_bits_mmd(phydev, DP83822_DEVADDR, MII_DP83822_WOL_CFG,
+				  DP83822_WOL_EN | DP83822_WOL_MAGIC_EN |
+				  DP83822_WOL_SECURE_ON);
+}
+
 static int dp83822_read_status(struct phy_device *phydev)
 {
 	struct dp83822_private *dp83822 = phydev->priv;
@@ -505,7 +496,7 @@ static int dp83822_config_init(struct phy_device *phydev)
 				return err;
 		}
 	}
-	return dp83822_config_wol(phydev, &dp83822->wol);
+	return dp8382x_disable_wol(phydev);
 }
 
 static int dp83826_config_rmii_mode(struct phy_device *phydev)
@@ -584,14 +575,12 @@ static int dp83826_config_init(struct phy_device *phydev)
 			return ret;
 	}
 
-	return dp83822_config_wol(phydev, &dp83822->wol);
+	return dp8382x_disable_wol(phydev);
 }
 
 static int dp8382x_config_init(struct phy_device *phydev)
 {
-	struct dp83822_private *dp83822 = phydev->priv;
-
-	return dp83822_config_wol(phydev, &dp83822->wol);
+	return dp8382x_disable_wol(phydev);
 }
 
 static int dp83822_phy_reset(struct phy_device *phydev)

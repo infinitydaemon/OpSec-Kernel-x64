@@ -1335,7 +1335,6 @@ static int __init cgroup_no_v1(char *str)
 				continue;
 
 			cgroup_no_v1_mask |= 1 << i;
-			break;
 		}
 	}
 	return 1;

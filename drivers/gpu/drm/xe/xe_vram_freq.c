@@ -100,27 +100,31 @@ static void vram_freq_sysfs_fini(struct drm_device *drm, void *arg)
  * @tile: Xe Tile object
  *
  * It needs to be initialized after the main tile component is ready
- *
- * Returns: 0 on success, negative error code on error.
  */
-int xe_vram_freq_sysfs_init(struct xe_tile *tile)
+void xe_vram_freq_sysfs_init(struct xe_tile *tile)
 {
 	struct xe_device *xe = tile_to_xe(tile);
 	struct kobject *kobj;
 	int err;
 
 	if (xe->info.platform != XE_PVC)
-		return 0;
+		return;
 
 	kobj = kobject_create_and_add("memory", tile->sysfs);
-	if (!kobj)
-		return -ENOMEM;
+	if (!kobj) {
+		drm_warn(&xe->drm, "failed to add memory directory, err: %d\n", -ENOMEM);
+		return;
+	}
 
 	err = sysfs_create_group(kobj, &freq_group_attrs);
 	if (err) {
 		kobject_put(kobj);
-		return err;
+		drm_warn(&xe->drm, "failed to register vram freq sysfs, err: %d\n", err);
+		return;
 	}
 
-	return drmm_add_action_or_reset(&xe->drm, vram_freq_sysfs_fini, kobj);
+	err = drmm_add_action_or_reset(&xe->drm, vram_freq_sysfs_fini, kobj);
+	if (err)
+		drm_warn(&xe->drm, "%s: drmm_add_action_or_reset failed, err: %d\n",
+			 __func__, err);
 }

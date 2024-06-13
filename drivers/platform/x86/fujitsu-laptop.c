@@ -386,11 +386,11 @@ static ssize_t lid_show(struct device *dev, struct device_attribute *attr,
 	struct fujitsu_laptop *priv = dev_get_drvdata(dev);
 
 	if (!(priv->flags_supported & FLAG_LID))
-		return sysfs_emit(buf, "unknown\n");
+		return sprintf(buf, "unknown\n");
 	if (priv->flags_state & FLAG_LID)
-		return sysfs_emit(buf, "open\n");
+		return sprintf(buf, "open\n");
 	else
-		return sysfs_emit(buf, "closed\n");
+		return sprintf(buf, "closed\n");
 }
 
 static ssize_t dock_show(struct device *dev, struct device_attribute *attr,
@@ -399,11 +399,11 @@ static ssize_t dock_show(struct device *dev, struct device_attribute *attr,
 	struct fujitsu_laptop *priv = dev_get_drvdata(dev);
 
 	if (!(priv->flags_supported & FLAG_DOCK))
-		return sysfs_emit(buf, "unknown\n");
+		return sprintf(buf, "unknown\n");
 	if (priv->flags_state & FLAG_DOCK)
-		return sysfs_emit(buf, "docked\n");
+		return sprintf(buf, "docked\n");
 	else
-		return sysfs_emit(buf, "undocked\n");
+		return sprintf(buf, "undocked\n");
 }
 
 static ssize_t radios_show(struct device *dev, struct device_attribute *attr,
@@ -412,11 +412,11 @@ static ssize_t radios_show(struct device *dev, struct device_attribute *attr,
 	struct fujitsu_laptop *priv = dev_get_drvdata(dev);
 
 	if (!(priv->flags_supported & FLAG_RFKILL))
-		return sysfs_emit(buf, "unknown\n");
+		return sprintf(buf, "unknown\n");
 	if (priv->flags_state & FLAG_RFKILL)
-		return sysfs_emit(buf, "on\n");
+		return sprintf(buf, "on\n");
 	else
-		return sysfs_emit(buf, "killed\n");
+		return sprintf(buf, "killed\n");
 }
 
 static DEVICE_ATTR_RO(lid);

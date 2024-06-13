@@ -16,8 +16,6 @@
 		mmc0 = &usdhc1;
 		mmc1 = &usdhc2;
 		serial0 = &lpuart0;
-		serial1 = &lpuart1;
-		serial6 = &cm40_lpuart;
 	};
 
 	chosen {
@@ -51,16 +49,6 @@
 			alloc-ranges = <0 0x98000000 0 0x14000000>;
 			linux,cma-default;
 		};
-	};
-
-	m2_uart1_sel: regulator-m2uart1sel {
-		compatible = "regulator-fixed";
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-		regulator-name = "m2_uart1_sel";
-		gpio = <&pca6416_1 6 GPIO_ACTIVE_HIGH>;
-		enable-active-high;
-		regulator-always-on;
 	};
 
 	mux3_en: regulator-0 {
@@ -352,12 +340,6 @@
 	status = "okay";
 };
 
-&lpuart1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_lpuart1>;
-	status = "okay";
-};
-
 &flexcan2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
@@ -370,16 +352,6 @@
 	pinctrl-0 = <&pinctrl_flexcan3>;
 	xceiver-supply = <&reg_can1_stby>;
 	status = "okay";
-};
-
-&cm40_intmux {
-	status = "disabled";
-};
-
-&cm40_lpuart {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_cm40_lpuart>;
-	status = "disabled";
 };
 
 &lsio_gpio4 {
@@ -620,15 +592,6 @@
 		fsl,pins = <
 			IMX8DXL_UART0_RX_ADMA_UART0_RX		0x06000020
 			IMX8DXL_UART0_TX_ADMA_UART0_TX		0x06000020
-		>;
-	};
-
-	pinctrl_lpuart1: lpuart1grp {
-		fsl,pins = <
-			IMX8DXL_UART1_TX_ADMA_UART1_TX          0x06000020
-			IMX8DXL_UART1_RX_ADMA_UART1_RX          0x06000020
-			IMX8DXL_UART1_RTS_B_ADMA_UART1_RTS_B    0x06000020
-			IMX8DXL_UART1_CTS_B_ADMA_UART1_CTS_B    0x06000020
 		>;
 	};
 

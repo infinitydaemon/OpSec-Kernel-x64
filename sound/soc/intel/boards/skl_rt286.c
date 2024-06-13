@@ -2,12 +2,12 @@
 /*
  * Intel Skylake I2S Machine Driver
  *
- * Copyright (C) 2014-2015, Intel Corporation
+ * Copyright (C) 2014-2015, Intel Corporation. All rights reserved.
  *
  * Modified from:
  *   Intel Broadwell Wildcatpoint SST Audio
  *
- *   Copyright (C) 2013, Intel Corporation
+ *   Copyright (C) 2013, Intel Corporation. All rights reserved.
  */
 
 #include <linux/module.h>

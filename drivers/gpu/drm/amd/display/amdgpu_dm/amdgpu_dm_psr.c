@@ -212,7 +212,7 @@ bool amdgpu_dm_psr_disable(struct dc_stream_state *stream)
 }
 
 /*
- * amdgpu_dm_psr_disable_all() - disable psr f/w for all streams
+ * amdgpu_dm_psr_disable() - disable psr f/w
  * if psr is enabled on any stream
  *
  * Return: true if success

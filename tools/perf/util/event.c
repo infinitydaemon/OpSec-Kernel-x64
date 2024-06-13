@@ -726,7 +726,7 @@ int machine__resolve(struct machine *machine, struct addr_location *al,
 	dso = al->map ? map__dso(al->map) : NULL;
 	dump_printf(" ...... dso: %s\n",
 		dso
-		? dso__long_name(dso)
+		? dso->long_name
 		: (al->level == 'H' ? "[hypervisor]" : "<not found>"));
 
 	if (thread__is_filtered(thread))
@@ -750,10 +750,10 @@ int machine__resolve(struct machine *machine, struct addr_location *al,
 	if (al->map) {
 		if (symbol_conf.dso_list &&
 		    (!dso || !(strlist__has_entry(symbol_conf.dso_list,
-						  dso__short_name(dso)) ||
-			       (dso__short_name(dso) != dso__long_name(dso) &&
+						  dso->short_name) ||
+			       (dso->short_name != dso->long_name &&
 				strlist__has_entry(symbol_conf.dso_list,
-						   dso__long_name(dso)))))) {
+						   dso->long_name))))) {
 			al->filtered |= (1 << HIST_FILTER__DSO);
 		}
 

@@ -28,4 +28,3 @@
    management-style
    submit-checklist
    howto
-   development-process

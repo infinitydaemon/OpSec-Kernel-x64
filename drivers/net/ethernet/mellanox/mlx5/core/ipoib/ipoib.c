@@ -531,7 +531,7 @@ static int mlx5i_change_mtu(struct net_device *netdev, int new_mtu)
 	if (err)
 		goto out;
 
-	WRITE_ONCE(netdev->mtu, new_params.sw_mtu);
+	netdev->mtu = new_params.sw_mtu;
 
 out:
 	mutex_unlock(&priv->state_lock);

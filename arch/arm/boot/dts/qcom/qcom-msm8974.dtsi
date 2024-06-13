@@ -14,8 +14,6 @@
 	#size-cells = <1>;
 	interrupt-parent = <&intc>;
 
-	chosen { };
-
 	clocks {
 		xo_board: xo_board {
 			compatible = "fixed-clock";
@@ -87,7 +85,7 @@
 		};
 
 		idle-states {
-			CPU_SPC: cpu-spc {
+			CPU_SPC: spc {
 				compatible = "qcom,idle-state-spc",
 						"arm,idle-state";
 				entry-latency-us = <150>;
@@ -105,7 +103,7 @@
 		};
 	};
 
-	memory@0 {
+	memory {
 		device_type = "memory";
 		reg = <0x0 0x0>;
 	};

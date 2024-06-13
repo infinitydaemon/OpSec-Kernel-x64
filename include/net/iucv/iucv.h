@@ -82,12 +82,7 @@ struct iucv_array {
 } __attribute__ ((aligned (8)));
 
 extern const struct bus_type iucv_bus;
-
-struct device_driver;
-
-struct device *iucv_alloc_device(const struct attribute_group **attrs,
-				 struct device_driver *driver, void *priv,
-				 const char *fmt, ...) __printf(4, 5);
+extern struct device *iucv_root;
 
 /*
  * struct iucv_path

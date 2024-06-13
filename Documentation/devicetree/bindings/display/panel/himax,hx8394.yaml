@@ -26,8 +26,7 @@ properties:
           - powkiddy,x55-panel
       - const: himax,hx8394
 
-  reg:
-    maxItems: 1
+  reg: true
 
   reset-gpios: true
 

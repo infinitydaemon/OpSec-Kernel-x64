@@ -199,8 +199,10 @@ mext_page_mkuptodate(struct folio *folio, unsigned from, unsigned to)
 			continue;
 		if (!buffer_mapped(bh)) {
 			err = ext4_get_block(inode, block, bh, 0);
-			if (err)
+			if (err) {
+				folio_set_error(folio);
 				return err;
+			}
 			if (!buffer_mapped(bh)) {
 				folio_zero_range(folio, block_start, blocksize);
 				set_buffer_uptodate(bh);

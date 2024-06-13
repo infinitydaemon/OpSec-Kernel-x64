@@ -153,7 +153,6 @@ struct sockaddr;
 struct msghdr;
 struct module;
 struct sk_buff;
-struct proto_accept_arg;
 typedef int (*sk_read_actor_t)(read_descriptor_t *, struct sk_buff *,
 			       unsigned int, size_t);
 typedef int (*skb_read_actor_t)(struct sock *, struct sk_buff *);
@@ -172,8 +171,7 @@ struct proto_ops {
 	int		(*socketpair)(struct socket *sock1,
 				      struct socket *sock2);
 	int		(*accept)    (struct socket *sock,
-				      struct socket *newsock,
-				      struct proto_accept_arg *arg);
+				      struct socket *newsock, int flags, bool kern);
 	int		(*getname)   (struct socket *sock,
 				      struct sockaddr *addr,
 				      int peer);

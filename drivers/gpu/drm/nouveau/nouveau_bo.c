@@ -461,14 +461,17 @@ nouveau_bo_placement_set(struct nouveau_bo *nvbo, uint32_t domain,
 	set_placement_range(nvbo, domain);
 }
 
-int nouveau_bo_pin_locked(struct nouveau_bo *nvbo, uint32_t domain, bool contig)
+int
+nouveau_bo_pin(struct nouveau_bo *nvbo, uint32_t domain, bool contig)
 {
 	struct nouveau_drm *drm = nouveau_bdev(nvbo->bo.bdev);
 	struct ttm_buffer_object *bo = &nvbo->bo;
 	bool force = false, evict = false;
-	int ret = 0;
+	int ret;
 
-	dma_resv_assert_held(bo->base.resv);
+	ret = ttm_bo_reserve(bo, false, false, NULL);
+	if (ret)
+		return ret;
 
 	if (drm->client.device.info.family >= NV_DEVICE_INFO_V0_TESLA &&
 	    domain == NOUVEAU_GEM_DOMAIN_VRAM && contig) {
@@ -531,15 +534,20 @@ int nouveau_bo_pin_locked(struct nouveau_bo *nvbo, uint32_t domain, bool contig)
 out:
 	if (force && ret)
 		nvbo->contig = false;
+	ttm_bo_unreserve(bo);
 	return ret;
 }
 
-void nouveau_bo_unpin_locked(struct nouveau_bo *nvbo)
+int
+nouveau_bo_unpin(struct nouveau_bo *nvbo)
 {
 	struct nouveau_drm *drm = nouveau_bdev(nvbo->bo.bdev);
 	struct ttm_buffer_object *bo = &nvbo->bo;
+	int ret;
 
-	dma_resv_assert_held(bo->base.resv);
+	ret = ttm_bo_reserve(bo, false, false, NULL);
+	if (ret)
+		return ret;
 
 	ttm_bo_unpin(&nvbo->bo);
 	if (!nvbo->bo.pin_count) {
@@ -554,33 +562,8 @@ void nouveau_bo_unpin_locked(struct nouveau_bo *nvbo)
 			break;
 		}
 	}
-}
 
-int nouveau_bo_pin(struct nouveau_bo *nvbo, uint32_t domain, bool contig)
-{
-	struct ttm_buffer_object *bo = &nvbo->bo;
-	int ret;
-
-	ret = ttm_bo_reserve(bo, false, false, NULL);
-	if (ret)
-		return ret;
-	ret = nouveau_bo_pin_locked(nvbo, domain, contig);
 	ttm_bo_unreserve(bo);
-
-	return ret;
-}
-
-int nouveau_bo_unpin(struct nouveau_bo *nvbo)
-{
-	struct ttm_buffer_object *bo = &nvbo->bo;
-	int ret;
-
-	ret = ttm_bo_reserve(bo, false, false, NULL);
-	if (ret)
-		return ret;
-	nouveau_bo_unpin_locked(nvbo);
-	ttm_bo_unreserve(bo);
-
 	return 0;
 }
 

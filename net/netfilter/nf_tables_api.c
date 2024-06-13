@@ -3333,7 +3333,7 @@ err_expr_parse:
 	return ERR_PTR(err);
 }
 
-int nft_expr_clone(struct nft_expr *dst, struct nft_expr *src, gfp_t gfp)
+int nft_expr_clone(struct nft_expr *dst, struct nft_expr *src)
 {
 	int err;
 
@@ -3341,7 +3341,7 @@ int nft_expr_clone(struct nft_expr *dst, struct nft_expr *src, gfp_t gfp)
 		return -EINVAL;
 
 	dst->ops = src->ops;
-	err = src->ops->clone(dst, src, gfp);
+	err = src->ops->clone(dst, src);
 	if (err < 0)
 		return err;
 
@@ -6525,7 +6525,7 @@ int nft_set_elem_expr_clone(const struct nft_ctx *ctx, struct nft_set *set,
 		if (!expr)
 			goto err_expr;
 
-		err = nft_expr_clone(expr, set->exprs[i], GFP_KERNEL_ACCOUNT);
+		err = nft_expr_clone(expr, set->exprs[i]);
 		if (err < 0) {
 			kfree(expr);
 			goto err_expr;
@@ -6564,7 +6564,7 @@ static int nft_set_elem_expr_setup(struct nft_ctx *ctx,
 
 	for (i = 0; i < num_exprs; i++) {
 		expr = nft_setelem_expr_at(elem_expr, elem_expr->size);
-		err = nft_expr_clone(expr, expr_array[i], GFP_KERNEL_ACCOUNT);
+		err = nft_expr_clone(expr, expr_array[i]);
 		if (err < 0)
 			goto err_elem_expr_setup;
 
@@ -7775,9 +7775,6 @@ static int nf_tables_newobj(struct sk_buff *skb, const struct nfnl_info *info,
 		type = __nft_obj_type_get(objtype, family);
 		if (WARN_ON_ONCE(!type))
 			return -ENOENT;
-
-		if (!obj->ops->update)
-			return 0;
 
 		nft_ctx_init(&ctx, net, skb, info->nlh, family, table, NULL, nla);
 
@@ -9470,10 +9467,9 @@ static void nft_obj_commit_update(struct nft_trans *trans)
 	obj = nft_trans_obj(trans);
 	newobj = nft_trans_obj_newobj(trans);
 
-	if (WARN_ON_ONCE(!obj->ops->update))
-		return;
+	if (obj->ops->update)
+		obj->ops->update(obj, newobj);
 
-	obj->ops->update(obj, newobj);
 	nft_obj_destroy(&trans->ctx, newobj);
 }
 

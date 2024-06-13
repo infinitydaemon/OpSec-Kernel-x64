@@ -451,13 +451,15 @@ pde_get_unmapped_area(struct proc_dir_entry *pde, struct file *file, unsigned lo
 			   unsigned long len, unsigned long pgoff,
 			   unsigned long flags)
 {
-	if (pde->proc_ops->proc_get_unmapped_area)
-		return pde->proc_ops->proc_get_unmapped_area(file, orig_addr, len, pgoff, flags);
+	typeof_member(struct proc_ops, proc_get_unmapped_area) get_area;
 
+	get_area = pde->proc_ops->proc_get_unmapped_area;
 #ifdef CONFIG_MMU
-	return mm_get_unmapped_area(current->mm, file, orig_addr, len, pgoff, flags);
+	if (!get_area)
+		get_area = current->mm->get_unmapped_area;
 #endif
-
+	if (get_area)
+		return get_area(file, orig_addr, len, pgoff, flags);
 	return orig_addr;
 }
 

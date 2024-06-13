@@ -73,42 +73,8 @@ const struct bus_type iucv_bus = {
 };
 EXPORT_SYMBOL(iucv_bus);
 
-static struct device *iucv_root;
-
-static void iucv_release_device(struct device *device)
-{
-	kfree(device);
-}
-
-struct device *iucv_alloc_device(const struct attribute_group **attrs,
-				 struct device_driver *driver,
-				 void *priv, const char *fmt, ...)
-{
-	struct device *dev;
-	va_list vargs;
-	int rc;
-
-	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
-	if (!dev)
-		goto out_error;
-	va_start(vargs, fmt);
-	rc = dev_set_name(dev, fmt, vargs);
-	va_end(vargs);
-	if (rc)
-		goto out_error;
-	dev->bus = &iucv_bus;
-	dev->parent = iucv_root;
-	dev->driver = driver;
-	dev->groups = attrs;
-	dev->release = iucv_release_device;
-	dev_set_drvdata(dev, priv);
-	return dev;
-
-out_error:
-	kfree(dev);
-	return NULL;
-}
-EXPORT_SYMBOL(iucv_alloc_device);
+struct device *iucv_root;
+EXPORT_SYMBOL(iucv_root);
 
 static int iucv_available;
 
@@ -554,7 +520,7 @@ static void iucv_setmask_mp(void)
  */
 static void iucv_setmask_up(void)
 {
-	static cpumask_t cpumask;
+	cpumask_t cpumask;
 	int cpu;
 
 	/* Disable all cpu but the first in cpu_irq_cpumask. */
@@ -662,33 +628,23 @@ static int iucv_cpu_online(unsigned int cpu)
 
 static int iucv_cpu_down_prep(unsigned int cpu)
 {
-	cpumask_var_t cpumask;
-	int ret = 0;
+	cpumask_t cpumask;
 
 	if (!iucv_path_table)
 		return 0;
 
-	if (!alloc_cpumask_var(&cpumask, GFP_KERNEL))
-		return -ENOMEM;
-
-	cpumask_copy(cpumask, &iucv_buffer_cpumask);
-	cpumask_clear_cpu(cpu, cpumask);
-	if (cpumask_empty(cpumask)) {
+	cpumask_copy(&cpumask, &iucv_buffer_cpumask);
+	cpumask_clear_cpu(cpu, &cpumask);
+	if (cpumask_empty(&cpumask))
 		/* Can't offline last IUCV enabled cpu. */
-		ret = -EINVAL;
-		goto __free_cpumask;
-	}
+		return -EINVAL;
 
 	iucv_retrieve_cpu(NULL);
 	if (!cpumask_empty(&iucv_irq_cpumask))
-		goto __free_cpumask;
-
+		return 0;
 	smp_call_function_single(cpumask_first(&iucv_buffer_cpumask),
 				 iucv_allow_cpu, NULL, 1);
-
-__free_cpumask:
-	free_cpumask_var(cpumask);
-	return ret;
+	return 0;
 }
 
 /**

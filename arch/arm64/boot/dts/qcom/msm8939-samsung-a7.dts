@@ -286,12 +286,6 @@
 
 		pinctrl-0 = <&muic_int_default>;
 		pinctrl-names = "default";
-
-		usb_con: connector {
-			compatible = "usb-b-connector";
-			label = "micro-USB";
-			type = "micro";
-		};
 	};
 };
 

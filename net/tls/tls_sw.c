@@ -2147,6 +2147,7 @@ recv_end:
 		if (ret) {
 			if (err >= 0 || err == -EINPROGRESS)
 				err = ret;
+			decrypted = 0;
 			goto end;
 		}
 

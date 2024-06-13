@@ -347,10 +347,12 @@ static const struct of_device_id ti_cpufreq_of_match[] = {
 
 static const struct of_device_id *ti_cpufreq_match_node(void)
 {
-	struct device_node *np __free(device_node) = of_find_node_by_path("/");
+	struct device_node *np;
 	const struct of_device_id *match;
 
+	np = of_find_node_by_path("/");
 	match = of_match_node(ti_cpufreq_of_match, np);
+	of_node_put(np);
 
 	return match;
 }

@@ -712,8 +712,10 @@ static struct vector_device *find_device(int n)
 static int vector_parse(char *str, int *index_out, char **str_out,
 			char **error_out)
 {
-	int n, err;
+	int n, len, err;
 	char *start = str;
+
+	len = strlen(str);
 
 	while ((*str != ':') && (strlen(str) > 1))
 		str++;

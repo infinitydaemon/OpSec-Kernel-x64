@@ -163,7 +163,7 @@ xfs_trans_reserve(
 	 * fail if the count would go below zero.
 	 */
 	if (blocks > 0) {
-		error = xfs_dec_fdblocks(mp, blocks, rsvd);
+		error = xfs_mod_fdblocks(mp, -((int64_t)blocks), rsvd);
 		if (error != 0)
 			return -ENOSPC;
 		tp->t_blk_res += blocks;
@@ -210,7 +210,7 @@ xfs_trans_reserve(
 	 * fail if the count would go below zero.
 	 */
 	if (rtextents > 0) {
-		error = xfs_dec_frextents(mp, rtextents);
+		error = xfs_mod_frextents(mp, -((int64_t)rtextents));
 		if (error) {
 			error = -ENOSPC;
 			goto undo_log;
@@ -234,7 +234,7 @@ undo_log:
 
 undo_blocks:
 	if (blocks > 0) {
-		xfs_add_fdblocks(mp, blocks);
+		xfs_mod_fdblocks(mp, (int64_t)blocks, rsvd);
 		tp->t_blk_res = 0;
 	}
 	return error;
@@ -593,44 +593,38 @@ xfs_trans_unreserve_and_mod_sb(
 	struct xfs_trans	*tp)
 {
 	struct xfs_mount	*mp = tp->t_mountp;
-	int64_t			blkdelta = tp->t_blk_res;
-	int64_t			rtxdelta = tp->t_rtx_res;
+	bool			rsvd = (tp->t_flags & XFS_TRANS_RESERVE) != 0;
+	int64_t			blkdelta = 0;
+	int64_t			rtxdelta = 0;
 	int64_t			idelta = 0;
 	int64_t			ifreedelta = 0;
+	int			error;
 
-	/*
-	 * Calculate the deltas.
-	 *
-	 * t_fdblocks_delta and t_frextents_delta can be positive or negative:
-	 *
-	 *  - positive values indicate blocks freed in the transaction.
-	 *  - negative values indicate blocks allocated in the transaction
-	 *
-	 * Negative values can only happen if the transaction has a block
-	 * reservation that covers the allocated block.  The end result is
-	 * that the calculated delta values must always be positive and we
-	 * can only put back previous allocated or reserved blocks here.
-	 */
-	ASSERT(tp->t_blk_res || tp->t_fdblocks_delta >= 0);
-	if (xfs_has_lazysbcount(mp) || (tp->t_flags & XFS_TRANS_SB_DIRTY)) {
+	/* calculate deltas */
+	if (tp->t_blk_res > 0)
+		blkdelta = tp->t_blk_res;
+	if ((tp->t_fdblocks_delta != 0) &&
+	    (xfs_has_lazysbcount(mp) ||
+	     (tp->t_flags & XFS_TRANS_SB_DIRTY)))
 	        blkdelta += tp->t_fdblocks_delta;
-		ASSERT(blkdelta >= 0);
-	}
 
-	ASSERT(tp->t_rtx_res || tp->t_frextents_delta >= 0);
-	if (tp->t_flags & XFS_TRANS_SB_DIRTY) {
+	if (tp->t_rtx_res > 0)
+		rtxdelta = tp->t_rtx_res;
+	if ((tp->t_frextents_delta != 0) &&
+	    (tp->t_flags & XFS_TRANS_SB_DIRTY))
 		rtxdelta += tp->t_frextents_delta;
-		ASSERT(rtxdelta >= 0);
-	}
 
-	if (xfs_has_lazysbcount(mp) || (tp->t_flags & XFS_TRANS_SB_DIRTY)) {
+	if (xfs_has_lazysbcount(mp) ||
+	     (tp->t_flags & XFS_TRANS_SB_DIRTY)) {
 		idelta = tp->t_icount_delta;
 		ifreedelta = tp->t_ifree_delta;
 	}
 
 	/* apply the per-cpu counters */
-	if (blkdelta)
-		xfs_add_fdblocks(mp, blkdelta);
+	if (blkdelta) {
+		error = xfs_mod_fdblocks(mp, blkdelta, rsvd);
+		ASSERT(!error);
+	}
 
 	if (idelta)
 		percpu_counter_add_batch(&mp->m_icount, idelta,
@@ -639,8 +633,10 @@ xfs_trans_unreserve_and_mod_sb(
 	if (ifreedelta)
 		percpu_counter_add(&mp->m_ifree, ifreedelta);
 
-	if (rtxdelta)
-		xfs_add_frextents(mp, rtxdelta);
+	if (rtxdelta) {
+		error = xfs_mod_frextents(mp, rtxdelta);
+		ASSERT(!error);
+	}
 
 	if (!(tp->t_flags & XFS_TRANS_SB_DIRTY))
 		return;
@@ -676,6 +672,7 @@ xfs_trans_unreserve_and_mod_sb(
 	 */
 	ASSERT(mp->m_sb.sb_imax_pct >= 0);
 	ASSERT(mp->m_sb.sb_rextslog >= 0);
+	return;
 }
 
 /* Add the given log item to the transaction's list of log items. */
@@ -1294,9 +1291,9 @@ xfs_trans_reserve_more_inode(
 		return 0;
 
 	/* Quota failed, give back the new reservation. */
-	xfs_add_fdblocks(mp, dblocks);
+	xfs_mod_fdblocks(mp, dblocks, tp->t_flags & XFS_TRANS_RESERVE);
 	tp->t_blk_res -= dblocks;
-	xfs_add_frextents(mp, rtx);
+	xfs_mod_frextents(mp, rtx);
 	tp->t_rtx_res -= rtx;
 	return error;
 }
@@ -1433,8 +1430,6 @@ out_cancel:
  * The caller must ensure that the on-disk dquots attached to this inode have
  * already been allocated and initialized.  The ILOCKs will be dropped when the
  * transaction is committed or cancelled.
- *
- * Caller is responsible for unlocking the inodes manually upon return
  */
 int
 xfs_trans_alloc_dir(
@@ -1465,8 +1460,8 @@ retry:
 
 	xfs_lock_two_inodes(dp, XFS_ILOCK_EXCL, ip, XFS_ILOCK_EXCL);
 
-	xfs_trans_ijoin(tp, dp, 0);
-	xfs_trans_ijoin(tp, ip, 0);
+	xfs_trans_ijoin(tp, dp, XFS_ILOCK_EXCL);
+	xfs_trans_ijoin(tp, ip, XFS_ILOCK_EXCL);
 
 	error = xfs_qm_dqattach_locked(dp, false);
 	if (error) {
@@ -1489,9 +1484,6 @@ retry:
 	if (error == -EDQUOT || error == -ENOSPC) {
 		if (!retried) {
 			xfs_trans_cancel(tp);
-			xfs_iunlock(dp, XFS_ILOCK_EXCL);
-			if (dp != ip)
-				xfs_iunlock(ip, XFS_ILOCK_EXCL);
 			xfs_blockgc_free_quota(dp, 0);
 			retried = true;
 			goto retry;

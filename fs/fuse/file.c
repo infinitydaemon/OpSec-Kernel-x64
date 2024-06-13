@@ -935,10 +935,14 @@ static void fuse_readpages_end(struct fuse_mount *fm, struct fuse_args *args,
 	}
 
 	for (i = 0; i < ap->num_pages; i++) {
-		struct folio *folio = page_folio(ap->pages[i]);
+		struct page *page = ap->pages[i];
 
-		folio_end_read(folio, !err);
-		folio_put(folio);
+		if (!err)
+			SetPageUptodate(page);
+		else
+			SetPageError(page);
+		unlock_page(page);
+		put_page(page);
 	}
 	if (ia->ff)
 		fuse_file_put(ia->ff, false);

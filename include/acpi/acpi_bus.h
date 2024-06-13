@@ -9,13 +9,8 @@
 #ifndef __ACPI_BUS_H__
 #define __ACPI_BUS_H__
 
-#include <linux/completion.h>
-#include <linux/container_of.h>
 #include <linux/device.h>
-#include <linux/kobject.h>
-#include <linux/mutex.h>
 #include <linux/property.h>
-#include <linux/types.h>
 
 struct acpi_handle_list {
 	u32 count;
@@ -129,8 +124,8 @@ static inline struct acpi_hotplug_profile *to_acpi_hotplug_profile(
 }
 
 struct acpi_scan_handler {
-	struct list_head list_node;
 	const struct acpi_device_id *ids;
+	struct list_head list_node;
 	bool (*match)(const char *idstr, const struct acpi_device_id **matchid);
 	int (*attach)(struct acpi_device *dev, const struct acpi_device_id *id);
 	void (*detach)(struct acpi_device *dev);
@@ -144,15 +139,11 @@ struct acpi_scan_handler {
  * --------------------
  */
 
-typedef int (*acpi_hp_notify) (struct acpi_device *, u32);
-typedef void (*acpi_hp_uevent) (struct acpi_device *, u32);
-typedef void (*acpi_hp_fixup) (struct acpi_device *);
-
 struct acpi_hotplug_context {
 	struct acpi_device *self;
-	acpi_hp_notify notify;
-	acpi_hp_uevent uevent;
-	acpi_hp_fixup fixup;
+	int (*notify)(struct acpi_device *, u32);
+	void (*uevent)(struct acpi_device *, u32);
+	void (*fixup)(struct acpi_device *);
 };
 
 /*
@@ -179,6 +170,7 @@ struct acpi_driver {
 	unsigned int flags;
 	struct acpi_device_ops ops;
 	struct device_driver drv;
+	struct module *owner;
 };
 
 /*
@@ -277,7 +269,6 @@ struct acpi_device_power_flags {
 };
 
 struct acpi_device_power_state {
-	struct list_head resources;	/* Power resources referenced */
 	struct {
 		u8 valid:1;
 		u8 explicit_set:1;	/* _PSx present? */
@@ -285,6 +276,7 @@ struct acpi_device_power_state {
 	} flags;
 	int power;		/* % Power (compared to D0) */
 	int latency;		/* Dx->D0 time (microseconds) */
+	struct list_head resources;	/* Power resources referenced */
 };
 
 struct acpi_device_power {
@@ -350,16 +342,16 @@ struct acpi_device_wakeup {
 };
 
 struct acpi_device_physical_node {
+	unsigned int node_id;
 	struct list_head node;
 	struct device *dev;
-	unsigned int node_id;
 	bool put_online:1;
 };
 
 struct acpi_device_properties {
-	struct list_head list;
 	const guid_t *guid;
 	union acpi_object *properties;
+	struct list_head list;
 	void **bufs;
 };
 
@@ -496,12 +488,12 @@ struct acpi_device {
 
 /* Non-device subnode */
 struct acpi_data_node {
-	struct list_head sibling;
 	const char *name;
 	acpi_handle handle;
 	struct fwnode_handle fwnode;
 	struct fwnode_handle *parent;
 	struct acpi_device_data data;
+	struct list_head sibling;
 	struct kobject kobj;
 	struct completion kobj_done;
 };
@@ -586,7 +578,8 @@ static inline void acpi_set_hp_context(struct acpi_device *adev,
 
 void acpi_initialize_hp_context(struct acpi_device *adev,
 				struct acpi_hotplug_context *hp,
-				acpi_hp_notify notify, acpi_hp_uevent uevent);
+				int (*notify)(struct acpi_device *, u32),
+				void (*uevent)(struct acpi_device *, u32));
 
 /* acpi_device.dev.bus == &acpi_bus_type */
 extern const struct bus_type acpi_bus_type;
@@ -663,12 +656,7 @@ void acpi_scan_lock_release(void);
 void acpi_lock_hp_context(void);
 void acpi_unlock_hp_context(void);
 int acpi_scan_add_handler(struct acpi_scan_handler *handler);
-/*
- * use a macro to avoid include chaining to get THIS_MODULE
- */
-#define acpi_bus_register_driver(drv) \
-	__acpi_bus_register_driver(drv, THIS_MODULE)
-int __acpi_bus_register_driver(struct acpi_driver *driver, struct module *owner);
+int acpi_bus_register_driver(struct acpi_driver *driver);
 void acpi_bus_unregister_driver(struct acpi_driver *driver);
 int acpi_bus_scan(acpi_handle handle);
 void acpi_bus_trim(struct acpi_device *start);
@@ -990,15 +978,10 @@ static inline void acpi_put_acpi_dev(struct acpi_device *adev)
 {
 	acpi_dev_put(adev);
 }
-
-int acpi_wait_for_acpi_ipmi(void);
-
 #else	/* CONFIG_ACPI */
 
 static inline int register_acpi_bus_type(void *bus) { return 0; }
 static inline int unregister_acpi_bus_type(void *bus) { return 0; }
-
-static inline int acpi_wait_for_acpi_ipmi(void) { return 0; }
 
 #endif				/* CONFIG_ACPI */
 

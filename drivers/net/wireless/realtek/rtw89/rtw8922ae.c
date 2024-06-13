@@ -61,7 +61,6 @@ static const struct rtw89_pci_info rtw8922a_pci_info = {
 
 static const struct rtw89_driver_info rtw89_8922ae_info = {
 	.chip = &rtw8922a_chip_info,
-	.quirks = NULL,
 	.bus = {
 		.pci = &rtw8922a_pci_info,
 	},

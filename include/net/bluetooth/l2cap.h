@@ -463,24 +463,18 @@ struct l2cap_le_credits {
 #define L2CAP_ECRED_MAX_CID		5
 
 struct l2cap_ecred_conn_req {
-	/* New members must be added within the struct_group() macro below. */
-	__struct_group(l2cap_ecred_conn_req_hdr, hdr, __packed,
-		__le16 psm;
-		__le16 mtu;
-		__le16 mps;
-		__le16 credits;
-	);
+	__le16 psm;
+	__le16 mtu;
+	__le16 mps;
+	__le16 credits;
 	__le16 scid[];
 } __packed;
 
 struct l2cap_ecred_conn_rsp {
-	/* New members must be added within the struct_group() macro below. */
-	struct_group_tagged(l2cap_ecred_conn_rsp_hdr, hdr,
-		__le16 mtu;
-		__le16 mps;
-		__le16 credits;
-		__le16 result;
-	);
+	__le16 mtu;
+	__le16 mps;
+	__le16 credits;
+	__le16 result;
 	__le16 dcid[];
 };
 

@@ -166,7 +166,8 @@ static void wb_wakeup_delayed(struct bdi_writeback *wb)
 	spin_unlock_irq(&wb->work_lock);
 }
 
-static void finish_writeback_work(struct wb_writeback_work *work)
+static void finish_writeback_work(struct bdi_writeback *wb,
+				  struct wb_writeback_work *work)
 {
 	struct wb_completion *done = work->done;
 
@@ -195,7 +196,7 @@ static void wb_queue_work(struct bdi_writeback *wb,
 		list_add_tail(&work->list, &wb->work_list);
 		mod_delayed_work(bdi_wq, &wb->dwork, 0);
 	} else
-		finish_writeback_work(work);
+		finish_writeback_work(wb, work);
 
 	spin_unlock_irq(&wb->work_lock);
 }
@@ -1560,8 +1561,7 @@ static void inode_sleep_on_writeback(struct inode *inode)
  * thread's back can have unexpected consequences.
  */
 static void requeue_inode(struct inode *inode, struct bdi_writeback *wb,
-			  struct writeback_control *wbc,
-			  unsigned long dirtied_before)
+			  struct writeback_control *wbc)
 {
 	if (inode->i_state & I_FREEING)
 		return;
@@ -1594,8 +1594,7 @@ static void requeue_inode(struct inode *inode, struct bdi_writeback *wb,
 		 * We didn't write back all the pages.  nfs_writepages()
 		 * sometimes bales out without doing anything.
 		 */
-		if (wbc->nr_to_write <= 0 &&
-		    !inode_dirtied_after(inode, dirtied_before)) {
+		if (wbc->nr_to_write <= 0) {
 			/* Slice used up. Queue for next turn. */
 			requeue_io(inode, wb);
 		} else {
@@ -1863,11 +1862,6 @@ static long writeback_sb_inodes(struct super_block *sb,
 	unsigned long start_time = jiffies;
 	long write_chunk;
 	long total_wrote = 0;  /* count both pages and inodes */
-	unsigned long dirtied_before = jiffies;
-
-	if (work->for_kupdate)
-		dirtied_before = jiffies -
-			msecs_to_jiffies(dirty_expire_interval * 10);
 
 	while (!list_empty(&wb->b_io)) {
 		struct inode *inode = wb_inode(wb->b_io.prev);
@@ -1973,7 +1967,7 @@ static long writeback_sb_inodes(struct super_block *sb,
 		spin_lock(&inode->i_lock);
 		if (!(inode->i_state & I_DIRTY_ALL))
 			total_wrote++;
-		requeue_inode(inode, tmp_wb, &wbc, dirtied_before);
+		requeue_inode(inode, tmp_wb, &wbc);
 		inode_sync_complete(inode);
 		spin_unlock(&inode->i_lock);
 
@@ -2075,7 +2069,6 @@ static long wb_writeback(struct bdi_writeback *wb,
 	struct inode *inode;
 	long progress;
 	struct blk_plug plug;
-	bool queued = false;
 
 	blk_start_plug(&plug);
 	for (;;) {
@@ -2105,24 +2098,21 @@ static long wb_writeback(struct bdi_writeback *wb,
 
 		spin_lock(&wb->list_lock);
 
-		trace_writeback_start(wb, work);
-		if (list_empty(&wb->b_io)) {
-			/*
-			 * Kupdate and background works are special and we want
-			 * to include all inodes that need writing. Livelock
-			 * avoidance is handled by these works yielding to any
-			 * other work so we are safe.
-			 */
-			if (work->for_kupdate) {
-				dirtied_before = jiffies -
-					msecs_to_jiffies(dirty_expire_interval *
-							 10);
-			} else if (work->for_background)
-				dirtied_before = jiffies;
+		/*
+		 * Kupdate and background works are special and we want to
+		 * include all inodes that need writing. Livelock avoidance is
+		 * handled by these works yielding to any other work so we are
+		 * safe.
+		 */
+		if (work->for_kupdate) {
+			dirtied_before = jiffies -
+				msecs_to_jiffies(dirty_expire_interval * 10);
+		} else if (work->for_background)
+			dirtied_before = jiffies;
 
+		trace_writeback_start(wb, work);
+		if (list_empty(&wb->b_io))
 			queue_io(wb, work, dirtied_before);
-			queued = true;
-		}
 		if (work->sb)
 			progress = writeback_sb_inodes(work->sb, wb, work);
 		else
@@ -2137,7 +2127,7 @@ static long wb_writeback(struct bdi_writeback *wb,
 		 * mean the overall work is done. So we keep looping as long
 		 * as made some progress on cleaning pages or inodes.
 		 */
-		if (progress || !queued) {
+		if (progress) {
 			spin_unlock(&wb->list_lock);
 			continue;
 		}
@@ -2272,7 +2262,7 @@ static long wb_do_writeback(struct bdi_writeback *wb)
 	while ((work = get_next_work_item(wb)) != NULL) {
 		trace_writeback_exec(wb, work);
 		wrote += wb_writeback(wb, work);
-		finish_writeback_work(work);
+		finish_writeback_work(wb, work);
 	}
 
 	/*
@@ -2332,7 +2322,8 @@ void wb_workfn(struct work_struct *work)
 }
 
 /*
- * Start writeback of all dirty pages on this bdi.
+ * Start writeback of `nr_pages' pages on this bdi. If `nr_pages' is zero,
+ * write back the whole world.
  */
 static void __wakeup_flusher_threads_bdi(struct backing_dev_info *bdi,
 					 enum wb_reason reason)
@@ -2735,7 +2726,7 @@ EXPORT_SYMBOL(writeback_inodes_sb_nr);
  */
 void writeback_inodes_sb(struct super_block *sb, enum wb_reason reason)
 {
-	writeback_inodes_sb_nr(sb, get_nr_dirty_pages(), reason);
+	return writeback_inodes_sb_nr(sb, get_nr_dirty_pages(), reason);
 }
 EXPORT_SYMBOL(writeback_inodes_sb);
 

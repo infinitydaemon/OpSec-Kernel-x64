@@ -13,11 +13,11 @@ int for_each_thermal_trip(struct thermal_zone_device *tz,
 			  int (*cb)(struct thermal_trip *, void *),
 			  void *data)
 {
-	struct thermal_trip_desc *td;
+	struct thermal_trip *trip;
 	int ret;
 
-	for_each_trip_desc(tz, td) {
-		ret = cb(&td->trip, data);
+	for_each_trip(tz, trip) {
+		ret = cb(trip, data);
 		if (ret)
 			return ret;
 	}
@@ -63,7 +63,7 @@ EXPORT_SYMBOL_GPL(thermal_zone_get_num_trips);
  */
 void __thermal_zone_set_trips(struct thermal_zone_device *tz)
 {
-	const struct thermal_trip_desc *td;
+	const struct thermal_trip *trip;
 	int low = -INT_MAX, high = INT_MAX;
 	int ret;
 
@@ -72,8 +72,7 @@ void __thermal_zone_set_trips(struct thermal_zone_device *tz)
 	if (!tz->ops.set_trips)
 		return;
 
-	for_each_trip_desc(tz, td) {
-		const struct thermal_trip *trip = &td->trip;
+	for_each_trip(tz, trip) {
 		int trip_low;
 
 		trip_low = trip->temperature - trip->hysteresis;
@@ -111,7 +110,7 @@ int __thermal_zone_get_trip(struct thermal_zone_device *tz, int trip_id,
 	if (!tz || trip_id < 0 || trip_id >= tz->num_trips || !trip)
 		return -EINVAL;
 
-	*trip = tz->trips[trip_id].trip;
+	*trip = tz->trips[trip_id];
 	return 0;
 }
 EXPORT_SYMBOL_GPL(__thermal_zone_get_trip);
@@ -136,9 +135,8 @@ int thermal_zone_trip_id(const struct thermal_zone_device *tz,
 	 * Assume the trip to be located within the bounds of the thermal
 	 * zone's trips[] table.
 	 */
-	return trip_to_trip_desc(trip) - tz->trips;
+	return trip - tz->trips;
 }
-
 void thermal_zone_trip_updated(struct thermal_zone_device *tz,
 			       const struct thermal_trip *trip)
 {
@@ -154,27 +152,5 @@ void thermal_zone_set_trip_temp(struct thermal_zone_device *tz,
 
 	trip->temperature = temp;
 	thermal_notify_tz_trip_change(tz, trip);
-
-	if (temp == THERMAL_TEMP_INVALID) {
-		struct thermal_trip_desc *td = trip_to_trip_desc(trip);
-
-		if (tz->temperature >= td->threshold) {
-			/*
-			 * The trip has been crossed on the way up, so some
-			 * adjustments are needed to compensate for the lack
-			 * of it going forward.
-			 */
-			if (trip->type == THERMAL_TRIP_PASSIVE) {
-				tz->passive--;
-				WARN_ON_ONCE(tz->passive < 0);
-			}
-			thermal_zone_trip_down(tz, trip);
-		}
-		/*
-		 * Invalidate the threshold to avoid triggering a spurious
-		 * trip crossing notification when the trip becomes valid.
-		 */
-		td->threshold = INT_MAX;
-	}
 }
 EXPORT_SYMBOL_GPL(thermal_zone_set_trip_temp);

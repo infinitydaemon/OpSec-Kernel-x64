@@ -18,6 +18,11 @@
 #include <sound/soc-dapm.h>
 #include "sof_sdw_common.h"
 
+static const struct snd_soc_dapm_widget cs42l43_hs_widgets[] = {
+	SND_SOC_DAPM_HP("Headphone", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+};
+
 static const struct snd_soc_dapm_route cs42l43_hs_map[] = {
 	{ "Headphone", NULL, "cs42l43 AMP3_OUT" },
 	{ "Headphone", NULL, "cs42l43 AMP4_OUT" },
@@ -25,11 +30,8 @@ static const struct snd_soc_dapm_route cs42l43_hs_map[] = {
 	{ "cs42l43 ADC1_IN1_N", NULL, "Headset Mic" },
 };
 
-static const struct snd_soc_dapm_route cs42l43_spk_map[] = {
-	{ "Speaker", NULL, "cs42l43 AMP1_OUT_P", },
-	{ "Speaker", NULL, "cs42l43 AMP1_OUT_N", },
-	{ "Speaker", NULL, "cs42l43 AMP2_OUT_P", },
-	{ "Speaker", NULL, "cs42l43 AMP2_OUT_N", },
+static const struct snd_soc_dapm_widget cs42l43_dmic_widgets[] = {
+	SND_SOC_DAPM_MIC("DMIC", NULL),
 };
 
 static const struct snd_soc_dapm_route cs42l43_dmic_map[] = {
@@ -48,7 +50,7 @@ static struct snd_soc_jack_pin sof_jack_pins[] = {
 	},
 };
 
-int cs42l43_hs_rtd_init(struct snd_soc_pcm_runtime *rtd, struct snd_soc_dai *dai)
+int cs42l43_hs_rtd_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_component *component = snd_soc_rtd_to_codec(rtd, 0)->component;
 	struct mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
@@ -60,6 +62,13 @@ int cs42l43_hs_rtd_init(struct snd_soc_pcm_runtime *rtd, struct snd_soc_dai *dai
 					  card->components);
 	if (!card->components)
 		return -ENOMEM;
+
+	ret = snd_soc_dapm_new_controls(&card->dapm, cs42l43_hs_widgets,
+					ARRAY_SIZE(cs42l43_hs_widgets));
+	if (ret) {
+		dev_err(card->dev, "cs42l43 hs widgets addition failed: %d\n", ret);
+		return ret;
+	}
 
 	ret = snd_soc_dapm_add_routes(&card->dapm, cs42l43_hs_map,
 				      ARRAY_SIZE(cs42l43_hs_map));
@@ -99,43 +108,7 @@ int cs42l43_hs_rtd_init(struct snd_soc_pcm_runtime *rtd, struct snd_soc_dai *dai
 	return ret;
 }
 
-int cs42l43_spk_rtd_init(struct snd_soc_pcm_runtime *rtd, struct snd_soc_dai *dai)
-{
-	struct snd_soc_card *card = rtd->card;
-	int ret;
-
-	if (!(sof_sdw_quirk & SOF_SIDECAR_AMPS)) {
-		/* Will be set by the bridge code in this case */
-		card->components = devm_kasprintf(card->dev, GFP_KERNEL,
-						  "%s spk:cs42l43-spk",
-						  card->components);
-		if (!card->components)
-			return -ENOMEM;
-	}
-
-	ret = snd_soc_dapm_add_routes(&card->dapm, cs42l43_spk_map,
-				      ARRAY_SIZE(cs42l43_spk_map));
-	if (ret)
-		dev_err(card->dev, "cs42l43 speaker map addition failed: %d\n", ret);
-
-	return ret;
-}
-
-int sof_sdw_cs42l43_spk_init(struct snd_soc_card *card,
-			     struct snd_soc_dai_link *dai_links,
-			     struct sof_sdw_codec_info *info,
-			     bool playback)
-{
-	/* Do init on playback link only. */
-	if (!playback)
-		return 0;
-
-	info->amp_num++;
-
-	return bridge_cs35l56_spk_init(card, dai_links, info, playback);
-}
-
-int cs42l43_dmic_rtd_init(struct snd_soc_pcm_runtime *rtd, struct snd_soc_dai *dai)
+int cs42l43_dmic_rtd_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_card *card = rtd->card;
 	int ret;
@@ -144,6 +117,13 @@ int cs42l43_dmic_rtd_init(struct snd_soc_pcm_runtime *rtd, struct snd_soc_dai *d
 					  card->components);
 	if (!card->components)
 		return -ENOMEM;
+
+	ret = snd_soc_dapm_new_controls(&card->dapm, cs42l43_dmic_widgets,
+					ARRAY_SIZE(cs42l43_dmic_widgets));
+	if (ret) {
+		dev_err(card->dev, "cs42l43 dmic widgets addition failed: %d\n", ret);
+		return ret;
+	}
 
 	ret = snd_soc_dapm_add_routes(&card->dapm, cs42l43_dmic_map,
 				      ARRAY_SIZE(cs42l43_dmic_map));

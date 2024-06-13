@@ -408,8 +408,15 @@ struct kfd_dev *kgd2kfd_probe(struct amdgpu_device *adev, bool vf)
 			f2g = &gfx_v11_kfd2kgd;
 			break;
 		case IP_VERSION(11, 0, 3):
-			/* Note: Compiler version is 11.0.1 while HW version is 11.0.3 */
-			gfx_target_version = 110001;
+			if ((adev->pdev->device == 0x7460 &&
+			     adev->pdev->revision == 0x00) ||
+			    (adev->pdev->device == 0x7461 &&
+			     adev->pdev->revision == 0x00))
+				/* Note: Compiler version is 11.0.5 while HW version is 11.0.3 */
+				gfx_target_version = 110005;
+			else
+				/* Note: Compiler version is 11.0.1 while HW version is 11.0.3 */
+				gfx_target_version = 110001;
 			f2g = &gfx_v11_kfd2kgd;
 			break;
 		case IP_VERSION(11, 5, 0):
@@ -428,12 +435,12 @@ struct kfd_dev *kgd2kfd_probe(struct amdgpu_device *adev, bool vf)
 
 	if (!f2g) {
 		if (amdgpu_ip_version(adev, GC_HWIP, 0))
-			dev_info(kfd_device,
+			dev_err(kfd_device,
 				"GC IP %06x %s not supported in kfd\n",
 				amdgpu_ip_version(adev, GC_HWIP, 0),
 				vf ? "VF" : "");
 		else
-			dev_info(kfd_device, "%s %s not supported in kfd\n",
+			dev_err(kfd_device, "%s %s not supported in kfd\n",
 				amdgpu_asic_name[adev->asic_type], vf ? "VF" : "");
 		return NULL;
 	}

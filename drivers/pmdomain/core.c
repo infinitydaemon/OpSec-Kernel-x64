@@ -184,16 +184,6 @@ static struct generic_pm_domain *dev_to_genpd(struct device *dev)
 	return pd_to_genpd(dev->pm_domain);
 }
 
-struct device *dev_to_genpd_dev(struct device *dev)
-{
-	struct generic_pm_domain *genpd = dev_to_genpd(dev);
-
-	if (IS_ERR(genpd))
-		return ERR_CAST(genpd);
-
-	return &genpd->dev;
-}
-
 static int genpd_stop_dev(const struct generic_pm_domain *genpd,
 			  struct device *dev)
 {
@@ -1188,12 +1178,8 @@ static void genpd_sync_power_off(struct generic_pm_domain *genpd, bool use_lock,
 
 	/* Choose the deepest state when suspending */
 	genpd->state_idx = genpd->state_count - 1;
-	if (_genpd_power_off(genpd, false)) {
-		genpd->states[genpd->state_idx].rejected++;
+	if (_genpd_power_off(genpd, false))
 		return;
-	} else {
-		genpd->states[genpd->state_idx].usage++;
-	}
 
 	genpd->status = GENPD_STATE_OFF;
 
@@ -1265,7 +1251,10 @@ static int genpd_prepare(struct device *dev)
 		return -EINVAL;
 
 	genpd_lock(genpd);
-	genpd->prepared_count++;
+
+	if (genpd->prepared_count++ == 0)
+		genpd->suspended_count = 0;
+
 	genpd_unlock(genpd);
 
 	ret = pm_generic_prepare(dev);

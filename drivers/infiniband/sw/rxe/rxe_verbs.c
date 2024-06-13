@@ -905,7 +905,12 @@ static int rxe_post_send_kernel(struct rxe_qp *qp,
 
 	/* kickoff processing of any posted wqes */
 	if (good)
-		rxe_sched_task(&qp->send_task);
+		rxe_sched_task(&qp->req.task);
+
+	spin_lock_irqsave(&qp->state_lock, flags);
+	if (qp_state(qp) == IB_QPS_ERR)
+		rxe_sched_task(&qp->comp.task);
+	spin_unlock_irqrestore(&qp->state_lock, flags);
 
 	return err;
 }
@@ -935,7 +940,7 @@ static int rxe_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
 
 	if (qp->is_user) {
 		/* Utilize process context to do protocol processing */
-		rxe_sched_task(&qp->send_task);
+		rxe_run_task(&qp->req.task);
 	} else {
 		err = rxe_post_send_kernel(qp, wr, bad_wr);
 		if (err)
@@ -1045,7 +1050,7 @@ static int rxe_post_recv(struct ib_qp *ibqp, const struct ib_recv_wr *wr,
 
 	spin_lock_irqsave(&qp->state_lock, flags);
 	if (qp_state(qp) == IB_QPS_ERR)
-		rxe_sched_task(&qp->recv_task);
+		rxe_sched_task(&qp->resp.task);
 	spin_unlock_irqrestore(&qp->state_lock, flags);
 
 	return err;

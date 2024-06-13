@@ -199,7 +199,7 @@ static int mtk8250_startup(struct uart_port *port)
 
 	if (up->dma) {
 		data->rx_status = DMA_RX_START;
-		kfifo_reset(&port->state->port.xmit_fifo);
+		uart_circ_clear(&port->state->xmit);
 	}
 #endif
 	memset(&port->icount, 0, sizeof(port->icount));

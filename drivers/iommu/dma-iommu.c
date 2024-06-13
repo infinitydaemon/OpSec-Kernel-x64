@@ -32,7 +32,6 @@
 #include <trace/events/swiotlb.h>
 
 #include "dma-iommu.h"
-#include "iommu-pages.h"
 
 struct iommu_dma_msi_page {
 	struct list_head	list;
@@ -157,7 +156,7 @@ static void fq_ring_free_locked(struct iommu_dma_cookie *cookie, struct iova_fq 
 		if (fq->entries[idx].counter >= counter)
 			break;
 
-		iommu_put_pages_list(&fq->entries[idx].freelist);
+		put_pages_list(&fq->entries[idx].freelist);
 		free_iova_fast(&cookie->iovad,
 			       fq->entries[idx].iova_pfn,
 			       fq->entries[idx].pages);
@@ -255,7 +254,7 @@ static void iommu_dma_free_fq_single(struct iova_fq *fq)
 	int idx;
 
 	fq_ring_for_each(idx, fq)
-		iommu_put_pages_list(&fq->entries[idx].freelist);
+		put_pages_list(&fq->entries[idx].freelist);
 	vfree(fq);
 }
 
@@ -268,7 +267,7 @@ static void iommu_dma_free_fq_percpu(struct iova_fq __percpu *percpu_fq)
 		struct iova_fq *fq = per_cpu_ptr(percpu_fq, cpu);
 
 		fq_ring_for_each(idx, fq)
-			iommu_put_pages_list(&fq->entries[idx].freelist);
+			put_pages_list(&fq->entries[idx].freelist);
 	}
 
 	free_percpu(percpu_fq);
@@ -661,16 +660,19 @@ static void iommu_dma_init_options(struct iommu_dma_options *options,
 /**
  * iommu_dma_init_domain - Initialise a DMA mapping domain
  * @domain: IOMMU domain previously prepared by iommu_get_dma_cookie()
+ * @base: IOVA at which the mappable address space starts
+ * @limit: Last address of the IOVA space
  * @dev: Device the domain is being initialised for
  *
- * If the geometry and dma_range_map include address 0, we reserve that page
+ * @base and @limit + 1 should be exact multiples of IOMMU page granularity to
+ * avoid rounding surprises. If necessary, we reserve the page at address 0
  * to ensure it is an invalid IOVA. It is safe to reinitialise a domain, but
  * any change which could make prior IOVAs invalid will fail.
  */
-static int iommu_dma_init_domain(struct iommu_domain *domain, struct device *dev)
+static int iommu_dma_init_domain(struct iommu_domain *domain, dma_addr_t base,
+				 dma_addr_t limit, struct device *dev)
 {
 	struct iommu_dma_cookie *cookie = domain->iova_cookie;
-	const struct bus_dma_region *map = dev->dma_range_map;
 	unsigned long order, base_pfn;
 	struct iova_domain *iovad;
 	int ret;
@@ -682,19 +684,19 @@ static int iommu_dma_init_domain(struct iommu_domain *domain, struct device *dev
 
 	/* Use the smallest supported page size for IOVA granularity */
 	order = __ffs(domain->pgsize_bitmap);
-	base_pfn = 1;
+	base_pfn = max_t(unsigned long, 1, base >> order);
 
 	/* Check the domain allows at least some access to the device... */
-	if (map) {
-		if (dma_range_map_min(map) > domain->geometry.aperture_end ||
-		    dma_range_map_max(map) < domain->geometry.aperture_start) {
+	if (domain->geometry.force_aperture) {
+		if (base > domain->geometry.aperture_end ||
+		    limit < domain->geometry.aperture_start) {
 			pr_warn("specified DMA range outside IOMMU capability\n");
 			return -EFAULT;
 		}
+		/* ...then finally give it a kicking to make sure it fits */
+		base_pfn = max_t(unsigned long, base_pfn,
+				domain->geometry.aperture_start >> order);
 	}
-	/* ...then finally give it a kicking to make sure it fits */
-	base_pfn = max_t(unsigned long, base_pfn,
-			 domain->geometry.aperture_start >> order);
 
 	/* start_pfn is always nonzero for an already-initialised domain */
 	mutex_lock(&cookie->mutex);
@@ -1152,6 +1154,9 @@ static dma_addr_t iommu_dma_map_page(struct device *dev, struct page *page,
 	 */
 	if (dev_use_swiotlb(dev, size, dir) &&
 	    iova_offset(iovad, phys | size)) {
+		void *padding_start;
+		size_t padding_size, aligned_size;
+
 		if (!is_swiotlb_active(dev)) {
 			dev_warn_once(dev, "DMA bounce buffers are inactive, unable to map unaligned transaction.\n");
 			return DMA_MAPPING_ERROR;
@@ -1159,30 +1164,24 @@ static dma_addr_t iommu_dma_map_page(struct device *dev, struct page *page,
 
 		trace_swiotlb_bounced(dev, phys, size);
 
-		phys = swiotlb_tbl_map_single(dev, phys, size,
+		aligned_size = iova_align(iovad, size);
+		phys = swiotlb_tbl_map_single(dev, phys, size, aligned_size,
 					      iova_mask(iovad), dir, attrs);
 
 		if (phys == DMA_MAPPING_ERROR)
 			return DMA_MAPPING_ERROR;
 
-		/*
-		 * Untrusted devices should not see padding areas with random
-		 * leftover kernel data, so zero the pre- and post-padding.
-		 * swiotlb_tbl_map_single() has initialized the bounce buffer
-		 * proper to the contents of the original memory buffer.
-		 */
-		if (dev_is_untrusted(dev)) {
-			size_t start, virt = (size_t)phys_to_virt(phys);
+		/* Cleanup the padding area. */
+		padding_start = phys_to_virt(phys);
+		padding_size = aligned_size;
 
-			/* Pre-padding */
-			start = iova_align_down(iovad, virt);
-			memset((void *)start, 0, virt - start);
-
-			/* Post-padding */
-			start = virt + size;
-			memset((void *)start, 0,
-			       iova_align(iovad, start) - start);
+		if (!(attrs & DMA_ATTR_SKIP_CPU_SYNC) &&
+		    (dir == DMA_TO_DEVICE || dir == DMA_BIDIRECTIONAL)) {
+			padding_start += size;
+			padding_size -= size;
 		}
+
+		memset(padding_start, 0, padding_size);
 	}
 
 	if (!coherent && !(attrs & DMA_ATTR_SKIP_CPU_SYNC))
@@ -1721,11 +1720,10 @@ static size_t iommu_dma_max_mapping_size(struct device *dev)
 }
 
 static const struct dma_map_ops iommu_dma_ops = {
-	.flags			= DMA_F_PCI_P2PDMA_SUPPORTED |
-				  DMA_F_CAN_SKIP_SYNC,
+	.flags			= DMA_F_PCI_P2PDMA_SUPPORTED,
 	.alloc			= iommu_dma_alloc,
 	.free			= iommu_dma_free,
-	.alloc_pages_op		= dma_common_alloc_pages,
+	.alloc_pages		= dma_common_alloc_pages,
 	.free_pages		= dma_common_free_pages,
 	.alloc_noncontiguous	= iommu_dma_alloc_noncontiguous,
 	.free_noncontiguous	= iommu_dma_free_noncontiguous,
@@ -1746,20 +1744,25 @@ static const struct dma_map_ops iommu_dma_ops = {
 	.max_mapping_size       = iommu_dma_max_mapping_size,
 };
 
-void iommu_setup_dma_ops(struct device *dev)
+/*
+ * The IOMMU core code allocates the default DMA domain, which the underlying
+ * IOMMU driver needs to support via the dma-iommu layer.
+ */
+void iommu_setup_dma_ops(struct device *dev, u64 dma_base, u64 dma_limit)
 {
 	struct iommu_domain *domain = iommu_get_domain_for_dev(dev);
 
-	if (dev_is_pci(dev))
-		dev->iommu->pci_32bit_workaround = !iommu_dma_forcedac;
+	if (!domain)
+		goto out_err;
 
+	/*
+	 * The IOMMU core code allocates the default DMA domain, which the
+	 * underlying IOMMU driver needs to support via the dma-iommu layer.
+	 */
 	if (iommu_is_dma_domain(domain)) {
-		if (iommu_dma_init_domain(domain, dev))
+		if (iommu_dma_init_domain(domain, dma_base, dma_limit, dev))
 			goto out_err;
 		dev->dma_ops = &iommu_dma_ops;
-	} else if (dev->dma_ops == &iommu_dma_ops) {
-		/* Clean up if we've switched *from* a DMA domain */
-		dev->dma_ops = NULL;
 	}
 
 	return;
@@ -1767,6 +1770,7 @@ out_err:
 	 pr_warn("Failed to set up IOMMU for device %s; retaining platform DMA ops\n",
 		 dev_name(dev));
 }
+EXPORT_SYMBOL_GPL(iommu_setup_dma_ops);
 
 static struct iommu_dma_msi_page *iommu_dma_get_msi_page(struct device *dev,
 		phys_addr_t msi_addr, struct iommu_domain *domain)

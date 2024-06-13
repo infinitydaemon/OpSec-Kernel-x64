@@ -2,7 +2,7 @@
 /*
  * Intel Broxton-P I2S Machine Driver
  *
- * Copyright (C) 2014-2016, Intel Corporation
+ * Copyright (C) 2014-2016, Intel Corporation. All rights reserved.
  *
  * Modified from:
  *   Intel Skylake I2S Machine driver

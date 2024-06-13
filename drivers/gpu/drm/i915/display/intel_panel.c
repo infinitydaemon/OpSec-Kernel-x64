@@ -47,12 +47,10 @@
 
 bool intel_panel_use_ssc(struct drm_i915_private *i915)
 {
-	struct intel_display *display = &i915->display;
-
-	if (display->params.panel_use_ssc >= 0)
-		return display->params.panel_use_ssc != 0;
-	return display->vbt.lvds_use_ssc &&
-		!intel_has_quirk(display, QUIRK_LVDS_SSC_DISABLE);
+	if (i915->display.params.panel_use_ssc >= 0)
+		return i915->display.params.panel_use_ssc != 0;
+	return i915->display.vbt.lvds_use_ssc &&
+		!intel_has_quirk(i915, QUIRK_LVDS_SSC_DISABLE);
 }
 
 const struct drm_display_mode *

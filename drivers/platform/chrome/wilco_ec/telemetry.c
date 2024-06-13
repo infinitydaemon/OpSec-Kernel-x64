@@ -30,7 +30,6 @@
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/fs.h>
-#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/platform_data/wilco-ec.h>
 #include <linux/platform_device.h>
@@ -410,19 +409,12 @@ static void telem_device_remove(struct platform_device *pdev)
 	put_device(&dev_data->dev);
 }
 
-static const struct platform_device_id telem_id[] = {
-	{ DRV_NAME, 0 },
-	{}
-};
-MODULE_DEVICE_TABLE(platform, telem_id);
-
 static struct platform_driver telem_driver = {
 	.probe = telem_device_probe,
 	.remove_new = telem_device_remove,
 	.driver = {
 		.name = DRV_NAME,
 	},
-	.id_table = telem_id,
 };
 
 static int __init telem_module_init(void)
@@ -474,3 +466,4 @@ module_exit(telem_module_exit);
 MODULE_AUTHOR("Nick Crews <ncrews@chromium.org>");
 MODULE_DESCRIPTION("Wilco EC telemetry driver");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:" DRV_NAME);

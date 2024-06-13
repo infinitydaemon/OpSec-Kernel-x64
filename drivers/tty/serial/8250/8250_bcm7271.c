@@ -413,18 +413,20 @@ static int stop_tx_dma(struct uart_8250_port *p)
 static int brcmuart_tx_dma(struct uart_8250_port *p)
 {
 	struct brcmuart_priv *priv = p->port.private_data;
-	struct tty_port *tport = &p->port.state->port;
+	struct circ_buf *xmit = &p->port.state->xmit;
 	u32 tx_size;
 
 	if (uart_tx_stopped(&p->port) || priv->tx_running ||
-		kfifo_is_empty(&tport->xmit_fifo)) {
+		uart_circ_empty(xmit)) {
 		return 0;
 	}
+	tx_size = CIRC_CNT_TO_END(xmit->head, xmit->tail, UART_XMIT_SIZE);
 
 	priv->dma.tx_err = 0;
-	tx_size = uart_fifo_out(&p->port, priv->tx_buf, UART_XMIT_SIZE);
+	memcpy(priv->tx_buf, &xmit->buf[xmit->tail], tx_size);
+	uart_xmit_advance(&p->port, tx_size);
 
-	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
+	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
 		uart_write_wakeup(&p->port);
 
 	udma_writel(priv, REGS_DMA_TX, UDMA_TX_TRANSFER_LEN, tx_size);
@@ -538,7 +540,7 @@ static void brcmuart_tx_isr(struct uart_port *up, u32 isr)
 	struct brcmuart_priv *priv = up->private_data;
 	struct device *dev = up->dev;
 	struct uart_8250_port *port_8250 = up_to_u8250p(up);
-	struct tty_port *tport = &port_8250->port.state->port;
+	struct circ_buf	*xmit = &port_8250->port.state->xmit;
 
 	if (isr & UDMA_INTR_TX_ABORT) {
 		if (priv->tx_running)
@@ -546,7 +548,7 @@ static void brcmuart_tx_isr(struct uart_port *up, u32 isr)
 		return;
 	}
 	priv->tx_running = false;
-	if (!kfifo_is_empty(&tport->xmit_fifo) && !uart_tx_stopped(up))
+	if (!uart_circ_empty(xmit) && !uart_tx_stopped(up))
 		brcmuart_tx_dma(port_8250);
 }
 

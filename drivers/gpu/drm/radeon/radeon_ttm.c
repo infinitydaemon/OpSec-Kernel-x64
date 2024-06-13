@@ -30,7 +30,6 @@
  *    Dave Airlie
  */
 
-#include <linux/debugfs.h>
 #include <linux/dma-mapping.h>
 #include <linux/pagemap.h>
 #include <linux/pci.h>

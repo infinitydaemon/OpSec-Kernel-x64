@@ -204,7 +204,6 @@ static void process_dlm_messages(struct work_struct *work);
 static DECLARE_WORK(process_work, process_dlm_messages);
 static DEFINE_SPINLOCK(processqueue_lock);
 static bool process_dlm_messages_pending;
-static DECLARE_WAIT_QUEUE_HEAD(processqueue_wq);
 static atomic_t processqueue_count;
 static LIST_HEAD(processqueue);
 
@@ -249,7 +248,7 @@ struct kmem_cache *dlm_lowcomms_writequeue_cache_create(void)
 
 struct kmem_cache *dlm_lowcomms_msg_cache_create(void)
 {
-	return KMEM_CACHE(dlm_msg, 0);
+	return kmem_cache_create("dlm_msg", sizeof(struct dlm_msg), 0, 0, NULL);
 }
 
 /* need to held writequeue_lock */
@@ -868,38 +867,36 @@ static void process_dlm_messages(struct work_struct *work)
 {
 	struct processqueue_entry *pentry;
 
-	spin_lock_bh(&processqueue_lock);
+	spin_lock(&processqueue_lock);
 	pentry = list_first_entry_or_null(&processqueue,
 					  struct processqueue_entry, list);
 	if (WARN_ON_ONCE(!pentry)) {
 		process_dlm_messages_pending = false;
-		spin_unlock_bh(&processqueue_lock);
+		spin_unlock(&processqueue_lock);
 		return;
 	}
 
 	list_del(&pentry->list);
-	if (atomic_dec_and_test(&processqueue_count))
-		wake_up(&processqueue_wq);
-	spin_unlock_bh(&processqueue_lock);
+	atomic_dec(&processqueue_count);
+	spin_unlock(&processqueue_lock);
 
 	for (;;) {
 		dlm_process_incoming_buffer(pentry->nodeid, pentry->buf,
 					    pentry->buflen);
 		free_processqueue_entry(pentry);
 
-		spin_lock_bh(&processqueue_lock);
+		spin_lock(&processqueue_lock);
 		pentry = list_first_entry_or_null(&processqueue,
 						  struct processqueue_entry, list);
 		if (!pentry) {
 			process_dlm_messages_pending = false;
-			spin_unlock_bh(&processqueue_lock);
+			spin_unlock(&processqueue_lock);
 			break;
 		}
 
 		list_del(&pentry->list);
-		if (atomic_dec_and_test(&processqueue_count))
-			wake_up(&processqueue_wq);
-		spin_unlock_bh(&processqueue_lock);
+		atomic_dec(&processqueue_count);
+		spin_unlock(&processqueue_lock);
 	}
 }
 
@@ -969,14 +966,14 @@ again:
 	memmove(con->rx_leftover_buf, pentry->buf + ret,
 		con->rx_leftover);
 
-	spin_lock_bh(&processqueue_lock);
+	spin_lock(&processqueue_lock);
 	ret = atomic_inc_return(&processqueue_count);
 	list_add_tail(&pentry->list, &processqueue);
 	if (!process_dlm_messages_pending) {
 		process_dlm_messages_pending = true;
 		queue_work(process_workqueue, &process_work);
 	}
-	spin_unlock_bh(&processqueue_lock);
+	spin_unlock(&processqueue_lock);
 
 	if (ret > DLM_MAX_PROCESS_BUFFERS)
 		return DLM_IO_FLUSH;
@@ -1232,13 +1229,14 @@ out:
 };
 
 static struct dlm_msg *dlm_lowcomms_new_msg_con(struct connection *con, int len,
-						char **ppc, void (*cb)(void *data),
+						gfp_t allocation, char **ppc,
+						void (*cb)(void *data),
 						void *data)
 {
 	struct writequeue_entry *e;
 	struct dlm_msg *msg;
 
-	msg = dlm_allocate_msg();
+	msg = dlm_allocate_msg(allocation);
 	if (!msg)
 		return NULL;
 
@@ -1263,8 +1261,9 @@ static struct dlm_msg *dlm_lowcomms_new_msg_con(struct connection *con, int len,
  * dlm_lowcomms_commit_msg which is a must call if success
  */
 #ifndef __CHECKER__
-struct dlm_msg *dlm_lowcomms_new_msg(int nodeid, int len, char **ppc,
-				     void (*cb)(void *data), void *data)
+struct dlm_msg *dlm_lowcomms_new_msg(int nodeid, int len, gfp_t allocation,
+				     char **ppc, void (*cb)(void *data),
+				     void *data)
 {
 	struct connection *con;
 	struct dlm_msg *msg;
@@ -1285,7 +1284,7 @@ struct dlm_msg *dlm_lowcomms_new_msg(int nodeid, int len, char **ppc,
 		return NULL;
 	}
 
-	msg = dlm_lowcomms_new_msg_con(con, len, ppc, cb, data);
+	msg = dlm_lowcomms_new_msg_con(con, len, allocation, ppc, cb, data);
 	if (!msg) {
 		srcu_read_unlock(&connections_srcu, idx);
 		return NULL;
@@ -1349,8 +1348,8 @@ int dlm_lowcomms_resend_msg(struct dlm_msg *msg)
 	if (msg->retransmit)
 		return 1;
 
-	msg_resend = dlm_lowcomms_new_msg_con(msg->entry->con, msg->len, &ppc,
-					      NULL, NULL);
+	msg_resend = dlm_lowcomms_new_msg_con(msg->entry->con, msg->len,
+					      GFP_ATOMIC, &ppc, NULL, NULL);
 	if (!msg_resend)
 		return -ENOMEM;
 
@@ -1514,20 +1513,7 @@ static void process_recv_sockets(struct work_struct *work)
 		/* CF_RECV_PENDING cleared */
 		break;
 	case DLM_IO_FLUSH:
-		/* we can't flush the process_workqueue here because a
-		 * WQ_MEM_RECLAIM workequeue can occurr a deadlock for a non
-		 * WQ_MEM_RECLAIM workqueue such as process_workqueue. Instead
-		 * we have a waitqueue to wait until all messages are
-		 * processed.
-		 *
-		 * This handling is only necessary to backoff the sender and
-		 * not queue all messages from the socket layer into DLM
-		 * processqueue. When DLM is capable to parse multiple messages
-		 * on an e.g. per socket basis this handling can might be
-		 * removed. Especially in a message burst we are too slow to
-		 * process messages and the queue will fill up memory.
-		 */
-		wait_event(processqueue_wq, !atomic_read(&processqueue_count));
+		flush_workqueue(process_workqueue);
 		fallthrough;
 	case DLM_IO_RESCHED:
 		cond_resched();
@@ -1717,7 +1703,11 @@ static int work_start(void)
 		return -ENOMEM;
 	}
 
-	process_workqueue = alloc_workqueue("dlm_process", WQ_HIGHPRI | WQ_BH, 0);
+	/* ordered dlm message process queue,
+	 * should be converted to a tasklet
+	 */
+	process_workqueue = alloc_ordered_workqueue("dlm_process",
+						    WQ_HIGHPRI | WQ_MEM_RECLAIM);
 	if (!process_workqueue) {
 		log_print("can't start dlm_process");
 		destroy_workqueue(io_workqueue);

@@ -160,19 +160,24 @@ int xe_tile_init_noalloc(struct xe_tile *tile)
 {
 	int err;
 
+	xe_device_mem_access_get(tile_to_xe(tile));
+
 	err = tile_ttm_mgr_init(tile);
 	if (err)
-		return err;
+		goto err_mem_access;
 
 	tile->mem.kernel_bb_pool = xe_sa_bo_manager_init(tile, SZ_1M, 16);
-	if (IS_ERR(tile->mem.kernel_bb_pool))
-		return PTR_ERR(tile->mem.kernel_bb_pool);
-
+	if (IS_ERR(tile->mem.kernel_bb_pool)) {
+		err = PTR_ERR(tile->mem.kernel_bb_pool);
+		goto err_mem_access;
+	}
 	xe_wa_apply_tile_workarounds(tile);
 
-	err = xe_tile_sysfs_init(tile);
+	xe_tile_sysfs_init(tile);
 
-	return 0;
+err_mem_access:
+	xe_device_mem_access_put(tile_to_xe(tile));
+	return err;
 }
 
 void xe_tile_migrate_wait(struct xe_tile *tile)

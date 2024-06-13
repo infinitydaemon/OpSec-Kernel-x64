@@ -59,8 +59,6 @@ const char *xe_uc_fw_status_repr(enum xe_uc_fw_status status)
 		return "TRANSFERRED";
 	case XE_UC_FIRMWARE_RUNNING:
 		return "RUNNING";
-	case XE_UC_FIRMWARE_PRELOADED:
-		return "PRELOADED";
 	}
 	return "<invalid>";
 }
@@ -87,7 +85,6 @@ static inline int xe_uc_fw_status_to_error(enum xe_uc_fw_status status)
 	case XE_UC_FIRMWARE_LOADABLE:
 	case XE_UC_FIRMWARE_TRANSFERRED:
 	case XE_UC_FIRMWARE_RUNNING:
-	case XE_UC_FIRMWARE_PRELOADED:
 		return 0;
 	}
 	return -EINVAL;
@@ -137,8 +134,7 @@ static inline bool xe_uc_fw_is_available(struct xe_uc_fw *uc_fw)
 
 static inline bool xe_uc_fw_is_loadable(struct xe_uc_fw *uc_fw)
 {
-	return __xe_uc_fw_status(uc_fw) >= XE_UC_FIRMWARE_LOADABLE &&
-		__xe_uc_fw_status(uc_fw) != XE_UC_FIRMWARE_PRELOADED;
+	return __xe_uc_fw_status(uc_fw) >= XE_UC_FIRMWARE_LOADABLE;
 }
 
 static inline bool xe_uc_fw_is_loaded(struct xe_uc_fw *uc_fw)
@@ -148,7 +144,7 @@ static inline bool xe_uc_fw_is_loaded(struct xe_uc_fw *uc_fw)
 
 static inline bool xe_uc_fw_is_running(struct xe_uc_fw *uc_fw)
 {
-	return __xe_uc_fw_status(uc_fw) >= XE_UC_FIRMWARE_RUNNING;
+	return __xe_uc_fw_status(uc_fw) == XE_UC_FIRMWARE_RUNNING;
 }
 
 static inline bool xe_uc_fw_is_overridden(const struct xe_uc_fw *uc_fw)

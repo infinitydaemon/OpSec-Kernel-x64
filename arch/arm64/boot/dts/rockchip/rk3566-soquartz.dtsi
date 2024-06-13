@@ -8,7 +8,7 @@
 #include "rk3566.dtsi"
 
 / {
-	model = "Pine64 SOQuartz system on module";
+	model = "Pine64 RK3566 SoQuartz SOM";
 	compatible = "pine64,soquartz", "rockchip,rk3566";
 
 	aliases {

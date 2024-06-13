@@ -40,7 +40,7 @@ struct hdmi_audio_data {
 static
 struct hdmi_audio_data *card_drvdata_substream(struct snd_pcm_substream *ss)
 {
-	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(ss);
+	struct snd_soc_pcm_runtime *rtd = ss->private_data;
 
 	return snd_soc_card_get_drvdata(rtd->card);
 }

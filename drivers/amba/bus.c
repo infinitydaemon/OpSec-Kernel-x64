@@ -488,31 +488,28 @@ static int __init amba_stub_drv_init(void)
 	 * waiting on amba_match(). So, register a stub driver to make sure
 	 * amba_match() is called even if no amba driver has been registered.
 	 */
-	return __amba_driver_register(&amba_proxy_drv, NULL);
+	return amba_driver_register(&amba_proxy_drv);
 }
 late_initcall_sync(amba_stub_drv_init);
 
 /**
- *	__amba_driver_register - register an AMBA device driver
+ *	amba_driver_register - register an AMBA device driver
  *	@drv: amba device driver structure
- *	@owner: owning module/driver
  *
  *	Register an AMBA device driver with the Linux device model
  *	core.  If devices pre-exist, the drivers probe function will
  *	be called.
  */
-int __amba_driver_register(struct amba_driver *drv,
-			   struct module *owner)
+int amba_driver_register(struct amba_driver *drv)
 {
 	if (!drv->probe)
 		return -EINVAL;
 
-	drv->drv.owner = owner;
 	drv->drv.bus = &amba_bustype;
 
 	return driver_register(&drv->drv);
 }
-EXPORT_SYMBOL(__amba_driver_register);
+EXPORT_SYMBOL(amba_driver_register);
 
 /**
  *	amba_driver_unregister - remove an AMBA device driver

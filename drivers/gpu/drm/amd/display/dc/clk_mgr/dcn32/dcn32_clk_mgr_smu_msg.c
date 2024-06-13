@@ -49,7 +49,6 @@
  */
 static uint32_t dcn32_smu_wait_for_response(struct clk_mgr_internal *clk_mgr, unsigned int delay_us, unsigned int max_retries)
 {
-	const uint32_t initial_max_retries = max_retries;
 	uint32_t reg = 0;
 
 	do {
@@ -62,8 +61,6 @@ static uint32_t dcn32_smu_wait_for_response(struct clk_mgr_internal *clk_mgr, un
 		else if (delay_us > 0)
 			udelay(delay_us);
 	} while (max_retries--);
-
-	TRACE_SMU_DELAY(delay_us * (initial_max_retries - max_retries), clk_mgr->base.ctx);
 
 	return reg;
 }
@@ -81,8 +78,6 @@ static bool dcn32_smu_send_msg_with_param(struct clk_mgr_internal *clk_mgr, uint
 
 	/* Trigger the message transaction by writing the message ID */
 	REG_WRITE(DAL_MSG_REG, msg_id);
-
-	TRACE_SMU_MSG(msg_id, param_in, clk_mgr->base.ctx);
 
 	/* Wait for response */
 	if (dcn32_smu_wait_for_response(clk_mgr, 10, 200000) == DALSMC_Result_OK) {
@@ -120,8 +115,6 @@ static uint32_t dcn32_smu_wait_for_response_delay(struct clk_mgr_internal *clk_m
 		*total_delay_us += delay_us;
 	} while (max_retries--);
 
-	TRACE_SMU_DELAY(*total_delay_us, clk_mgr->base.ctx);
-
 	return reg;
 }
 
@@ -141,8 +134,6 @@ static bool dcn32_smu_send_msg_with_param_delay(struct clk_mgr_internal *clk_mgr
 
 	/* Trigger the message transaction by writing the message ID */
 	REG_WRITE(DAL_MSG_REG, msg_id);
-
-	TRACE_SMU_MSG(msg_id, param_in, clk_mgr->base.ctx);
 
 	/* Wait for response */
 	if (dcn32_smu_wait_for_response_delay(clk_mgr, 10, 200000, &delay2_us) == DALSMC_Result_OK) {
