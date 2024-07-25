@@ -1,15 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0
+# CWD SYSTEMS Linux Kernel
+
 VERSION = 6
-PATCHLEVEL = 9
-SUBLEVEL = 7
+PATCHLEVEL = 10
+SUBLEVEL = 11
 EXTRAVERSION =
 NAME = The Dark Hadou
-
-# *DOCUMENTATION*
-# To see a list of typical targets execute "make help"
-# More info can be located in ./README
-# Comments in this file are targeted only to the developer, do not
-# expect to learn how to build the kernel reading this file.
 
 ifeq ($(filter undefine,$(.FEATURES)),)
 $(error GNU Make >= 3.82 is required. Your Make version is $(MAKE_VERSION))
@@ -18,25 +14,8 @@ endif
 $(if $(filter __%, $(MAKECMDGOALS)), \
 	$(error targets prefixed with '__' are only for internal use))
 
-# That's our default target when none is given on the command line
 PHONY := __all
 __all:
-
-# We are using a recursive build, so we need to do a little thinking
-# to get the ordering right.
-#
-# Most importantly: sub-Makefiles should only ever modify files in
-# their own directory. If in some directory we have a dependency on
-# a file in another dir (which doesn't happen often, but it's often
-# unavoidable when linking the built-in.a targets which finally
-# turn into vmlinux), we will call a sub make in that other dir, and
-# after that we are sure that everything which is in that other dir
-# is now up to date.
-#
-# The only cases where we need to modify files which have global
-# effects are thus separated out and done before the recursive
-# descending is started. They are now explicitly listed as the
-# prepare rule.
 
 this-makefile := $(lastword $(MAKEFILE_LIST))
 abs_srctree := $(realpath $(dir $(this-makefile)))
@@ -44,40 +23,14 @@ abs_objtree := $(CURDIR)
 
 ifneq ($(sub_make_done),1)
 
-# Do not use make's built-in rules and variables
-# (this increases performance and avoids hard-to-debug behaviour)
 MAKEFLAGS += -rR
 
-# Avoid funny character set dependencies
 unexport LC_ALL
 LC_COLLATE=C
 LC_NUMERIC=C
 export LC_COLLATE LC_NUMERIC
 
-# Avoid interference with shell env settings
 unexport GREP_OPTIONS
-
-# Beautify output
-# ---------------------------------------------------------------------------
-#
-# Most of build commands in Kbuild start with "cmd_". You can optionally define
-# "quiet_cmd_*". If defined, the short log is printed. Otherwise, no log from
-# that command is printed by default.
-#
-# e.g.)
-#    quiet_cmd_depmod = DEPMOD  $(MODLIB)
-#          cmd_depmod = $(srctree)/scripts/depmod.sh $(DEPMOD) $(KERNELRELEASE)
-#
-# A simple variant is to prefix commands with $(Q) - that's useful
-# for commands that shall be hidden in non-verbose mode.
-#
-#    $(Q)$(MAKE) $(build)=scripts/basic
-#
-# If KBUILD_VERBOSE contains 1, the whole command is echoed.
-# If KBUILD_VERBOSE contains 2, the reason for rebuilding is printed.
-#
-# To put more focus on warnings, be less verbose as default
-# Use 'make V=1' to see the full commands
 
 ifeq ("$(origin V)", "command line")
   KBUILD_VERBOSE = $(V)
@@ -90,10 +43,6 @@ ifneq ($(findstring 1, $(KBUILD_VERBOSE)),)
   quiet =
   Q =
 endif
-
-# If the user is running make -s (silent mode), suppress echoing of
-# commands
-# make-4.0 (and later) keep single letter options in the 1st word of MAKEFLAGS.
 
 ifeq ($(filter 3.%,$(MAKE_VERSION)),)
 short-opts := $(firstword -$(MAKEFLAGS))
@@ -108,16 +57,6 @@ endif
 
 export quiet Q KBUILD_VERBOSE
 
-# Call a source code checker (by default, "sparse") as part of the
-# C compilation.
-#
-# Use 'make C=1' to enable checking of only re-compiled files.
-# Use 'make C=2' to enable checking of *all* source files, regardless
-# of whether they are re-compiled or not.
-#
-# See the file "Documentation/dev-tools/sparse.rst" for more details,
-# including where to get the "sparse" utility.
-
 ifeq ("$(origin C)", "command line")
   KBUILD_CHECKSRC = $(C)
 endif
@@ -127,17 +66,12 @@ endif
 
 export KBUILD_CHECKSRC
 
-# Enable "clippy" (a linter) as part of the Rust compilation.
-#
-# Use 'make CLIPPY=1' to enable it.
 ifeq ("$(origin CLIPPY)", "command line")
   KBUILD_CLIPPY := $(CLIPPY)
 endif
 
 export KBUILD_CLIPPY
 
-# Use make M=dir or set the environment variable KBUILD_EXTMOD to specify the
-# directory of external module to build. Setting M= takes precedence.
 ifeq ("$(origin M)", "command line")
   KBUILD_EXTMOD := $(M)
 endif
@@ -164,27 +98,6 @@ endif
 
 export KBUILD_EXTRA_WARN
 
-# Kbuild will save output files in the current working directory.
-# This does not need to match to the root of the kernel source tree.
-#
-# For example, you can do this:
-#
-#  cd /dir/to/store/output/files; make -f /dir/to/kernel/source/Makefile
-#
-# If you want to save output files in a different location, there are
-# two syntaxes to specify it.
-#
-# 1) O=
-# Use "make O=dir/to/store/output/files/"
-#
-# 2) Set KBUILD_OUTPUT
-# Set the environment variable KBUILD_OUTPUT to point to the output directory.
-# export KBUILD_OUTPUT=dir/to/store/output/files/; make
-#
-# The O= assignment takes precedence over the KBUILD_OUTPUT environment
-# variable.
-
-# Do we want to change the working directory?
 ifeq ("$(origin O)", "command line")
   KBUILD_OUTPUT := $(O)
 endif
