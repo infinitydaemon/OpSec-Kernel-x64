@@ -26,7 +26,6 @@
 
 /* GAMMA-SABLE is a SABLE with EV5-based CPUs */
 #define _GAMMA_BIAS		0x8000000000UL
-
 #define GAMMA_BIAS		_GAMMA_BIAS
 
 /*
