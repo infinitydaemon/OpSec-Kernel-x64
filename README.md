@@ -39,6 +39,7 @@ Proceed to Stage 2 to enable hardened TCP/IP settings.
 
 ```bash
 cd Opsec-Kernel-x64
+chmod +x stage2-Opsec64.sh
 ./stage2-Opsec64.sh
 ```
 
