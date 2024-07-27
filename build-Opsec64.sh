@@ -59,8 +59,10 @@ echo -e "${BLUE}Changing directory to OpSec-Kernel-x64...${NC}"
 cd OpSec-Kernel-x64 || { echo -e "${RED}Failed to change directory! Exiting.${NC}"; exit 1; }
 
 # Configure the kernel
-echo -e "${BLUE}Configuring the kernel...${NC}"
-yes '' | make localmodconfig
+# echo -e "${BLUE}Configuring the kernel...${NC}"
+# yes '' | make localmodconfig
+#
+# This step is only required if a new kernel configuration needs to be generated. 
 
 # Disable SYSTEM_TRUSTED_KEYS and SYSTEM_REVOCATION_KEYS
 echo -e "${BLUE}Disabling SYSTEM_TRUSTED_KEYS and SYSTEM_REVOCATION_KEYS...${NC}"
@@ -74,13 +76,13 @@ echo -e "${GREEN}Downloading kernel config...${NC}"
 curl -o .config https://cwd.systems/configs/x86/config-6.10.11-CWDSYSTEMS_0KN-VMX
 
 # Compile the kernel
-echo -e "${BLUE}Compiling the kernel...${NC}"
+echo -e "${RED}Compiling the kernel...${NC}"
 yes '' | fakeroot make -j2
 
 # Install the kernel modules and kernel
-echo -e "${BLUE}Installing kernel modules...${NC}"
+echo -e "${RED}Installing kernel modules...${NC}"
 sudo make modules_install
-echo -e "${BLUE}Installing the kernel...${NC}"
+echo -e "${RED}Installing the kernel...${NC}"
 sudo make install
 
 # Prompt for reboot
