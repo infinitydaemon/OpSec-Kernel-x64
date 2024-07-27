@@ -33,7 +33,13 @@ chmod +x build-Opsec64.sh
 After all stages of the build process are completed, proceed to reboot by answering "Yes."
 
 ```bash
-uname -rs to verify
+uname -rs to verify if the kernel is loaded and activated.
+```
+Proceed to Stage 2 to enable hardened TCP/IP settings.
+
+```bash
+cd Opsec-Kernel-x64
+./stage2-Opsec64.sh
 ```
 
 In order to build the documentation, use ``make htmldocs`` or
