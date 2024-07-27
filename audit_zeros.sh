@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# This is an optional utility and is part of ZerOS. W.I.P and needs its own place. Not exactly part of the build process.
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
