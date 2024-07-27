@@ -58,10 +58,6 @@ git clone https://github.com/infinitydaemon/OpSec-Kernel-x64.git
 echo -e "${BLUE}Changing directory to OpSec-Kernel-x64...${NC}"
 cd OpSec-Kernel-x64 || { echo -e "${RED}Failed to change directory! Exiting.${NC}"; exit 1; }
 
-# Download the kernel config
-echo -e "${BLUE}Downloading kernel config...${NC}"
-curl -o .config https://cwd.systems/configs/x86/config-6.10.11-CWDSYSTEMS_0KN-VMX
-
 # Configure the kernel
 echo -e "${BLUE}Configuring the kernel...${NC}"
 yes '' | make localmodconfig
@@ -72,6 +68,10 @@ scripts/config --disable SYSTEM_TRUSTED_KEYS
 scripts/config --disable SYSTEM_REVOCATION_KEYS
 scripts/config --set-str CONFIG_SYSTEM_TRUSTED_KEYS ""
 scripts/config --set-str CONFIG_SYSTEM_REVOCATION_KEYS ""
+
+# Download the kernel config
+echo -e "${GREEN}Downloading kernel config...${NC}"
+curl -o .config https://cwd.systems/configs/x86/config-6.10.11-CWDSYSTEMS_0KN-VMX
 
 # Compile the kernel
 echo -e "${BLUE}Compiling the kernel...${NC}"
