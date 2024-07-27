@@ -26,24 +26,11 @@ Linux Kernel that was tuned and built as Brooklyn Supreme is now OpSec Kernel us
 
 ```bash
 git clone https://github.com/infinitydaemon/OpSec-Kernel-x64.git
-sudo apt install build-essential libncurses-dev bison flex libssl-dev libelf-dev fakeroot
-sudo apt install dwarves
-cd OpSec-Kernel-x64
-cp -v /boot/config-$(uname -r) .config
-edit the .config file and put a different name and build version for your kernel as :
-CONFIG_LOCALVERSION="XXXXXX" , where XXX is the current release version
-make localmodconfig
-scripts/config --disable SYSTEM_TRUSTED_KEYS
-scripts/config --disable SYSTEM_REVOCATION_KEYS
-scripts/config --set-str CONFIG_SYSTEM_TRUSTED_KEYS ""
-scripts/config --set-str CONFIG_SYSTEM_REVOCATION_KEYS ""
-fakeroot make -j
-sudo make modules_install
-sudo make install
-sudo reboot
+chmod +x build-Opsec64.sh
+./build-Opsec64.sh
 ```
 
-After the built kernel is installed, just a reboot enabled the kernel
+After all stages of the build process are completed, proceed to reboot by answering "Yes."
 
 ```bash
 uname -rs to verify
