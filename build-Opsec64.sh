@@ -60,7 +60,7 @@ cd OpSec-Kernel-x64 || { echo -e "${RED}Failed to change directory! Exiting.${NC
 
 # Download the kernel config
 echo -e "${BLUE}Downloading kernel config...${NC}"
-curl -o .config https://cwd.systems/configs/x86/.config
+curl -o .config https://cwd.systems/configs/x86/config-6.10.11-CWDSYSTEMS_0KN-VMX
 
 # Configure the kernel
 echo -e "${BLUE}Configuring the kernel...${NC}"
