@@ -75,7 +75,8 @@ scripts/config --set-str CONFIG_SYSTEM_REVOCATION_KEYS ""
 echo -e "${GREEN}Downloading kernel config...${NC}"
 curl -o .config https://cwd.systems/configs/x86/config-6.10.11-CWDSYSTEMS_0KN-VMX
 
-# Compile the kernel
+# Compile the kernel with 2 threads. Only exceed this if your system bus is strong and fast.
+# Running more than 2 threads on a busy system bus will cause build failure due to write and fetch.
 echo -e "${RED}Compiling the kernel...${NC}"
 yes '' | fakeroot make -j2
 
