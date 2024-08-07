@@ -5,7 +5,7 @@ class CWD_OpSec():
     
   def __init__(self):
     self.name = "cwd";
-    self.current.release = "The Dark Hadou for x86/64";
+    self.current.release = "The Crawling Serpent for x86/64";
     self.username = "cwdsystems";
     self.location = "KyrgzRepublic";
     self.protonmail = "@cwdsystems";
